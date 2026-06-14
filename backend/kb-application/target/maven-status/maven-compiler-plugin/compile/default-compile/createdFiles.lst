@@ -1,8 +1,0 @@
-com/example/kb/application/port/KnowledgeBaseRepository.class
-com/example/kb/application/port/ObjectStorage$StoredObject.class
-com/example/kb/application/port/ObjectStorage$PutObjectCommand.class
-com/example/kb/application/service/KnowledgeFileService.class
-com/example/kb/application/port/VectorIndexCleaner.class
-com/example/kb/application/port/ObjectStorage.class
-com/example/kb/application/service/KnowledgeBaseService.class
-com/example/kb/application/port/KnowledgeFileRepository.class

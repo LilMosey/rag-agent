@@ -1,6 +1,0 @@
-/Users/tangjie/javaai/agent/backend/kb-application/src/main/java/com/example/kb/application/port/KnowledgeBaseRepository.java
-/Users/tangjie/javaai/agent/backend/kb-application/src/main/java/com/example/kb/application/port/KnowledgeFileRepository.java
-/Users/tangjie/javaai/agent/backend/kb-application/src/main/java/com/example/kb/application/port/ObjectStorage.java
-/Users/tangjie/javaai/agent/backend/kb-application/src/main/java/com/example/kb/application/port/VectorIndexCleaner.java
-/Users/tangjie/javaai/agent/backend/kb-application/src/main/java/com/example/kb/application/service/KnowledgeBaseService.java
-/Users/tangjie/javaai/agent/backend/kb-application/src/main/java/com/example/kb/application/service/KnowledgeFileService.java

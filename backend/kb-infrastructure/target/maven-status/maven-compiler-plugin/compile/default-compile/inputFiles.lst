@@ -1,9 +1,0 @@
-/Users/tangjie/javaai/agent/backend/kb-infrastructure/src/main/java/com/example/kb/infrastructure/persistence/entity/KnowledgeBaseEntity.java
-/Users/tangjie/javaai/agent/backend/kb-infrastructure/src/main/java/com/example/kb/infrastructure/persistence/entity/KnowledgeFileEntity.java
-/Users/tangjie/javaai/agent/backend/kb-infrastructure/src/main/java/com/example/kb/infrastructure/persistence/mapper/KnowledgeBaseMapper.java
-/Users/tangjie/javaai/agent/backend/kb-infrastructure/src/main/java/com/example/kb/infrastructure/persistence/mapper/KnowledgeFileMapper.java
-/Users/tangjie/javaai/agent/backend/kb-infrastructure/src/main/java/com/example/kb/infrastructure/persistence/repository/MybatisKnowledgeBaseRepository.java
-/Users/tangjie/javaai/agent/backend/kb-infrastructure/src/main/java/com/example/kb/infrastructure/persistence/repository/MybatisKnowledgeFileRepository.java
-/Users/tangjie/javaai/agent/backend/kb-infrastructure/src/main/java/com/example/kb/infrastructure/storage/MinioObjectStorage.java
-/Users/tangjie/javaai/agent/backend/kb-infrastructure/src/main/java/com/example/kb/infrastructure/storage/MinioProperties.java
-/Users/tangjie/javaai/agent/backend/kb-infrastructure/src/main/java/com/example/kb/infrastructure/vector/NoopVectorIndexCleaner.java
