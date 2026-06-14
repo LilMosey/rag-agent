@@ -1,0 +1,19 @@
+package com.example.kb.application.port;
+
+import com.example.kb.domain.model.KnowledgeFile;
+
+import java.util.List;
+import java.util.Optional;
+
+public interface KnowledgeFileRepository {
+
+    boolean existsByKnowledgeBaseIdAndFilename(Long knowledgeBaseId, String filename);
+
+    KnowledgeFile save(KnowledgeFile file);
+
+    List<KnowledgeFile> search(Long knowledgeBaseId, String keyword, String status, int page, int size);
+
+    Optional<KnowledgeFile> findByKnowledgeBaseIdAndFileId(Long knowledgeBaseId, Long fileId);
+
+    void deleteByKnowledgeBaseIdAndFileId(Long knowledgeBaseId, Long fileId);
+}
