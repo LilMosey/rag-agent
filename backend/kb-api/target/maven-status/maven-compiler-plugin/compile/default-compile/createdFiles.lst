@@ -1,0 +1,10 @@
+com/example/kb/api/dto/KnowledgeBaseDtos.class
+com/example/kb/api/dto/ApiResponse.class
+com/example/kb/api/dto/KnowledgeBaseDtos$UpdateRequest.class
+com/example/kb/api/controller/KnowledgeFileController.class
+com/example/kb/api/dto/KnowledgeBaseDtos$CreateRequest.class
+com/example/kb/api/exception/GlobalExceptionHandler.class
+com/example/kb/api/dto/KnowledgeFileDtos.class
+com/example/kb/api/dto/KnowledgeFileDtos$Response.class
+com/example/kb/api/controller/KnowledgeBaseController.class
+com/example/kb/api/dto/KnowledgeBaseDtos$Response.class

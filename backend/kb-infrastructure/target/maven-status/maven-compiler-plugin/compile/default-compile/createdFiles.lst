@@ -1,0 +1,9 @@
+com/example/kb/infrastructure/persistence/entity/KnowledgeBaseEntity.class
+com/example/kb/infrastructure/storage/MinioProperties.class
+com/example/kb/infrastructure/persistence/mapper/KnowledgeFileMapper.class
+com/example/kb/infrastructure/storage/MinioObjectStorage.class
+com/example/kb/infrastructure/persistence/repository/MybatisKnowledgeBaseRepository.class
+com/example/kb/infrastructure/persistence/entity/KnowledgeFileEntity.class
+com/example/kb/infrastructure/persistence/mapper/KnowledgeBaseMapper.class
+com/example/kb/infrastructure/vector/NoopVectorIndexCleaner.class
+com/example/kb/infrastructure/persistence/repository/MybatisKnowledgeFileRepository.class

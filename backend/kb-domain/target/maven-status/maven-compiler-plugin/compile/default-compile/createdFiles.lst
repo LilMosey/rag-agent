@@ -1,0 +1,5 @@
+com/example/kb/domain/model/KnowledgeBase.class
+com/example/kb/domain/model/FileType.class
+com/example/kb/domain/model/FileStatus.class
+com/example/kb/domain/model/KnowledgeFile.class
+com/example/kb/domain/service/FileTypePolicy.class

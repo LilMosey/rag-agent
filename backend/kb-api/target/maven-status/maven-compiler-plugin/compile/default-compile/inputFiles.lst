@@ -1,0 +1,6 @@
+/Users/tangjie/javaai/agent/backend/kb-api/src/main/java/com/example/kb/api/controller/KnowledgeBaseController.java
+/Users/tangjie/javaai/agent/backend/kb-api/src/main/java/com/example/kb/api/controller/KnowledgeFileController.java
+/Users/tangjie/javaai/agent/backend/kb-api/src/main/java/com/example/kb/api/dto/ApiResponse.java
+/Users/tangjie/javaai/agent/backend/kb-api/src/main/java/com/example/kb/api/dto/KnowledgeBaseDtos.java
+/Users/tangjie/javaai/agent/backend/kb-api/src/main/java/com/example/kb/api/dto/KnowledgeFileDtos.java
+/Users/tangjie/javaai/agent/backend/kb-api/src/main/java/com/example/kb/api/exception/GlobalExceptionHandler.java
