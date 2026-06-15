@@ -1,0 +1,120 @@
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: agent-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root123456
+      MYSQL_DATABASE: enterprise_kb
+      MYSQL_USER: enterprise_kb
+      MYSQL_PASSWORD: enterprise_kb123456
+      TZ: Asia/Shanghai
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./backend/kb-infrastructure/src/main/resources/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot123456"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    pull_policy: missing
+    container_name: agent-minio
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    command: server /data --console-address ":9001"
+
+  minio-init:
+    image: minio/mc:latest
+    pull_policy: missing
+    container_name: agent-minio-init
+    depends_on:
+      minio:
+        condition: service_started
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 minioadmin minioadmin123; do sleep 2; done;
+      mc mb --ignore-existing local/enterprise-kb-files;
+      mc mb --ignore-existing local/a-bucket;
+      exit 0;
+      "
+
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.18
+    platform: linux/amd64
+    container_name: agent-etcd
+    profiles:
+      - milvus
+    restart: unless-stopped
+    environment:
+      ETCD_AUTO_COMPACTION_MODE: revision
+      ETCD_AUTO_COMPACTION_RETENTION: "1000"
+      ETCD_QUOTA_BACKEND_BYTES: "4294967296"
+      ETCD_SNAPSHOT_COUNT: "50000"
+    command: >
+      etcd
+      -advertise-client-urls=http://127.0.0.1:2379
+      -listen-client-urls=http://0.0.0.0:2379
+      --data-dir=/etcd
+    volumes:
+      - etcd-data:/etcd
+
+  milvus:
+    image: milvusdb/milvus:v2.6.9
+    platform: linux/amd64
+    container_name: agent-milvus
+    profiles:
+      - milvus
+    restart: unless-stopped
+    command: ["milvus", "run", "standalone"]
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin123
+      MINIO_BUCKET_NAME: a-bucket
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    depends_on:
+      - etcd
+      - minio
+      - minio-init
+    volumes:
+      - milvus-data:/var/lib/milvus
+    security_opt:
+      - seccomp:unconfined
+
+  attu:
+    image: zilliz/attu:latest
+    pull_policy: missing
+    container_name: agent-attu
+    profiles:
+      - milvus
+    restart: unless-stopped
+    environment:
+      MILVUS_URL: milvus:19530
+    ports:
+      - "8000:3000"
+    depends_on:
+      - milvus
+
+volumes:
+  mysql-data:
+  minio-data:
+  etcd-data:
+  milvus-data:
