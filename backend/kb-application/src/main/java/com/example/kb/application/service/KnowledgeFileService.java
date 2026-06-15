@@ -7,12 +7,16 @@ import com.example.kb.domain.model.FileStatus;
 import com.example.kb.domain.model.FileType;
 import com.example.kb.domain.model.KnowledgeFile;
 import com.example.kb.domain.service.FileTypePolicy;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.InputStream;
 import java.time.LocalDateTime;
 import java.util.List;
 
 public class KnowledgeFileService {
+
+    private static final Logger log = LoggerFactory.getLogger(KnowledgeFileService.class);
 
     private final KnowledgeFileRepository fileRepository;
     private final ObjectStorage objectStorage;
@@ -30,11 +34,16 @@ public class KnowledgeFileService {
     }
 
     public KnowledgeFile upload(Long knowledgeBaseId, String filename, String contentType, InputStream inputStream, long size) {
+        log.info("上传文件入参: knowledgeBaseId={}, filename={}, contentType={}, size={}", knowledgeBaseId, filename, contentType, size);
         if (fileRepository.existsByKnowledgeBaseIdAndFilename(knowledgeBaseId, filename)) {
+            log.warn("上传文件分支: 同名文件已存在, knowledgeBaseId={}, filename={}", knowledgeBaseId, filename);
             throw new IllegalArgumentException("同一知识库下已存在同名文件，请先删除旧文件。");
+        } else {
+            log.info("上传文件分支: 同名检查通过, knowledgeBaseId={}, filename={}", knowledgeBaseId, filename);
         }
 
         FileType fileType = fileTypePolicy.detect(filename);
+        log.info("上传文件分支: 文件类型识别成功, filename={}, fileType={}", filename, fileType);
         ObjectStorage.PutObjectCommand command = new ObjectStorage.PutObjectCommand(
                 knowledgeBaseId,
                 filename,
@@ -43,6 +52,7 @@ public class KnowledgeFileService {
                 size
         );
         ObjectStorage.StoredObject storedObject = objectStorage.putObject(command);
+        log.info("上传文件分支: 对象存储写入成功, bucket={}, objectKey={}, checksum={}", storedObject.bucket(), storedObject.objectKey(), storedObject.checksumSha256());
         LocalDateTime now = LocalDateTime.now();
         KnowledgeFile file = new KnowledgeFile(
                 null,
@@ -60,27 +70,43 @@ public class KnowledgeFileService {
                 now,
                 now
         );
-        return fileRepository.save(file);
+        KnowledgeFile saved = fileRepository.save(file);
+        log.info("上传文件出参: id={}, knowledgeBaseId={}, filename={}, status={}", saved.id(), saved.knowledgeBaseId(), saved.originalFilename(), saved.fileStatus());
+        return saved;
     }
 
     public List<KnowledgeFile> search(Long knowledgeBaseId, String keyword, String status, int page, int size) {
-        return fileRepository.search(knowledgeBaseId, keyword, status, page, size);
+        log.info("查询文件列表入参: knowledgeBaseId={}, keyword={}, status={}, page={}, size={}", knowledgeBaseId, keyword, status, page, size);
+        List<KnowledgeFile> files = fileRepository.search(knowledgeBaseId, keyword, status, page, size);
+        log.info("查询文件列表出参: count={}", files.size());
+        return files;
     }
 
     public KnowledgeFile get(Long knowledgeBaseId, Long fileId) {
-        return fileRepository.findByKnowledgeBaseIdAndFileId(knowledgeBaseId, fileId)
+        log.info("查询文件详情入参: knowledgeBaseId={}, fileId={}", knowledgeBaseId, fileId);
+        KnowledgeFile file = fileRepository.findByKnowledgeBaseIdAndFileId(knowledgeBaseId, fileId)
                 .orElseThrow(() -> new IllegalArgumentException("文件不存在。"));
+        log.info("查询文件详情出参: id={}, filename={}, status={}", file.id(), file.originalFilename(), file.fileStatus());
+        return file;
     }
 
     public InputStream download(Long knowledgeBaseId, Long fileId) {
+        log.info("下载文件入参: knowledgeBaseId={}, fileId={}", knowledgeBaseId, fileId);
         KnowledgeFile file = get(knowledgeBaseId, fileId);
-        return objectStorage.getObject(file.storageBucket(), file.storageObjectKey());
+        InputStream inputStream = objectStorage.getObject(file.storageBucket(), file.storageObjectKey());
+        log.info("下载文件出参: bucket={}, objectKey={}", file.storageBucket(), file.storageObjectKey());
+        return inputStream;
     }
 
     public void delete(Long knowledgeBaseId, Long fileId) {
+        log.info("删除文件入参: knowledgeBaseId={}, fileId={}", knowledgeBaseId, fileId);
         KnowledgeFile file = get(knowledgeBaseId, fileId);
+        log.info("删除文件分支: 开始清理向量索引, fileId={}", fileId);
         vectorIndexCleaner.deleteByFileId(fileId);
+        log.info("删除文件分支: 开始删除对象存储, bucket={}, objectKey={}", file.storageBucket(), file.storageObjectKey());
         objectStorage.deleteObject(file.storageBucket(), file.storageObjectKey());
+        log.info("删除文件分支: 开始删除数据库元数据, knowledgeBaseId={}, fileId={}", knowledgeBaseId, fileId);
         fileRepository.deleteByKnowledgeBaseIdAndFileId(knowledgeBaseId, fileId);
+        log.info("删除文件出参: knowledgeBaseId={}, fileId={}, deleted=true", knowledgeBaseId, fileId);
     }
 }

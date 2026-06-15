@@ -8,6 +8,8 @@ import com.example.kb.domain.model.FileType;
 import com.example.kb.domain.model.KnowledgeFile;
 import com.example.kb.infrastructure.persistence.entity.KnowledgeFileEntity;
 import com.example.kb.infrastructure.persistence.mapper.KnowledgeFileMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -15,6 +17,8 @@ import java.util.Optional;
 
 @Repository
 public class MybatisKnowledgeFileRepository implements KnowledgeFileRepository {
+
+    private static final Logger log = LoggerFactory.getLogger(MybatisKnowledgeFileRepository.class);
 
     private final KnowledgeFileMapper knowledgeFileMapper;
 
@@ -24,55 +28,81 @@ public class MybatisKnowledgeFileRepository implements KnowledgeFileRepository {
 
     @Override
     public boolean existsByKnowledgeBaseIdAndFilename(Long knowledgeBaseId, String filename) {
+        log.info("检查同名文件入参: knowledgeBaseId={}, filename={}", knowledgeBaseId, filename);
         LambdaQueryWrapper<KnowledgeFileEntity> wrapper = new LambdaQueryWrapper<KnowledgeFileEntity>()
                 .eq(KnowledgeFileEntity::getKnowledgeBaseId, knowledgeBaseId)
                 .eq(KnowledgeFileEntity::getOriginalFilename, filename);
-        return knowledgeFileMapper.selectCount(wrapper) > 0;
+        boolean exists = knowledgeFileMapper.selectCount(wrapper) > 0;
+        log.info("检查同名文件出参: knowledgeBaseId={}, filename={}, exists={}", knowledgeBaseId, filename, exists);
+        return exists;
     }
 
     @Override
     public KnowledgeFile save(KnowledgeFile file) {
+        log.info("保存文件元数据入参: id={}, knowledgeBaseId={}, filename={}", file.id(), file.knowledgeBaseId(), file.originalFilename());
         KnowledgeFileEntity entity = toEntity(file);
         if (entity.getId() == null) {
+            log.info("保存文件元数据分支: 新增文件, knowledgeBaseId={}, filename={}", entity.getKnowledgeBaseId(), entity.getOriginalFilename());
             knowledgeFileMapper.insert(entity);
         } else {
+            log.info("保存文件元数据分支: 更新文件, id={}", entity.getId());
             knowledgeFileMapper.updateById(entity);
         }
-        return toDomain(entity);
+        KnowledgeFile saved = toDomain(entity);
+        log.info("保存文件元数据出参: id={}, filename={}, status={}", saved.id(), saved.originalFilename(), saved.fileStatus());
+        return saved;
     }
 
     @Override
     public List<KnowledgeFile> search(Long knowledgeBaseId, String keyword, String status, int page, int size) {
+        log.info("搜索文件元数据入参: knowledgeBaseId={}, keyword={}, status={}, page={}, size={}", knowledgeBaseId, keyword, status, page, size);
         LambdaQueryWrapper<KnowledgeFileEntity> wrapper = new LambdaQueryWrapper<KnowledgeFileEntity>()
                 .eq(KnowledgeFileEntity::getKnowledgeBaseId, knowledgeBaseId)
                 .orderByDesc(KnowledgeFileEntity::getCreatedAt);
         if (keyword != null && !keyword.isBlank()) {
+            log.info("搜索文件元数据分支: 添加文件名关键字条件, keyword={}", keyword);
             wrapper.like(KnowledgeFileEntity::getOriginalFilename, keyword);
+        } else {
+            log.info("搜索文件元数据分支: 未添加文件名关键字条件");
         }
         if (status != null && !status.isBlank()) {
+            log.info("搜索文件元数据分支: 添加状态条件, status={}", status);
             wrapper.eq(KnowledgeFileEntity::getFileStatus, status);
+        } else {
+            log.info("搜索文件元数据分支: 未添加状态条件");
         }
         Page<KnowledgeFileEntity> pageRequest = Page.of(page, size);
-        return knowledgeFileMapper.selectPage(pageRequest, wrapper).getRecords().stream()
+        List<KnowledgeFile> files = knowledgeFileMapper.selectPage(pageRequest, wrapper).getRecords().stream()
                 .map(this::toDomain)
                 .toList();
+        log.info("搜索文件元数据出参: count={}", files.size());
+        return files;
     }
 
     @Override
     public Optional<KnowledgeFile> findByKnowledgeBaseIdAndFileId(Long knowledgeBaseId, Long fileId) {
+        log.info("按 ID 查询文件元数据入参: knowledgeBaseId={}, fileId={}", knowledgeBaseId, fileId);
         LambdaQueryWrapper<KnowledgeFileEntity> wrapper = new LambdaQueryWrapper<KnowledgeFileEntity>()
                 .eq(KnowledgeFileEntity::getKnowledgeBaseId, knowledgeBaseId)
                 .eq(KnowledgeFileEntity::getId, fileId);
         KnowledgeFileEntity entity = knowledgeFileMapper.selectOne(wrapper);
-        return Optional.ofNullable(entity).map(this::toDomain);
+        Optional<KnowledgeFile> result = Optional.ofNullable(entity).map(this::toDomain);
+        if (result.isPresent()) {
+            log.info("按 ID 查询文件元数据分支: 命中, knowledgeBaseId={}, fileId={}", knowledgeBaseId, fileId);
+        } else {
+            log.warn("按 ID 查询文件元数据分支: 未命中, knowledgeBaseId={}, fileId={}", knowledgeBaseId, fileId);
+        }
+        return result;
     }
 
     @Override
     public void deleteByKnowledgeBaseIdAndFileId(Long knowledgeBaseId, Long fileId) {
+        log.info("删除文件元数据入参: knowledgeBaseId={}, fileId={}", knowledgeBaseId, fileId);
         LambdaQueryWrapper<KnowledgeFileEntity> wrapper = new LambdaQueryWrapper<KnowledgeFileEntity>()
                 .eq(KnowledgeFileEntity::getKnowledgeBaseId, knowledgeBaseId)
                 .eq(KnowledgeFileEntity::getId, fileId);
         knowledgeFileMapper.delete(wrapper);
+        log.info("删除文件元数据出参: knowledgeBaseId={}, fileId={}, deleted=true", knowledgeBaseId, fileId);
     }
 
     private KnowledgeFile toDomain(KnowledgeFileEntity entity) {

@@ -4,6 +4,8 @@ import com.example.kb.api.dto.ApiResponse;
 import com.example.kb.api.dto.KnowledgeFileDtos;
 import com.example.kb.application.service.KnowledgeFileService;
 import com.example.kb.domain.model.KnowledgeFile;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
@@ -28,6 +30,8 @@ import java.util.List;
 @RequestMapping("/api/knowledge-bases/{kbId}/files")
 public class KnowledgeFileController {
 
+    private static final Logger log = LoggerFactory.getLogger(KnowledgeFileController.class);
+
     private final KnowledgeFileService knowledgeFileService;
 
     public KnowledgeFileController(KnowledgeFileService knowledgeFileService) {
@@ -39,6 +43,8 @@ public class KnowledgeFileController {
             @PathVariable("kbId") Long kbId,
             @RequestPart("file") MultipartFile file
     ) throws IOException {
+        log.info("文件上传接口入参: kbId={}, originalFilename={}, contentType={}, size={}",
+                kbId, file.getOriginalFilename(), file.getContentType(), file.getSize());
         KnowledgeFile knowledgeFile = knowledgeFileService.upload(
                 kbId,
                 file.getOriginalFilename(),
@@ -46,7 +52,9 @@ public class KnowledgeFileController {
                 file.getInputStream(),
                 file.getSize()
         );
-        return ApiResponse.ok(KnowledgeFileDtos.Response.from(knowledgeFile));
+        KnowledgeFileDtos.Response response = KnowledgeFileDtos.Response.from(knowledgeFile);
+        log.info("文件上传接口出参: id={}, filename={}, status={}", response.id(), response.originalFilename(), response.fileStatus());
+        return ApiResponse.ok(response);
     }
 
     @GetMapping
@@ -57,9 +65,11 @@ public class KnowledgeFileController {
             @RequestParam(name = "page", defaultValue = "1") int page,
             @RequestParam(name = "size", defaultValue = "20") int size
     ) {
+        log.info("文件列表接口入参: kbId={}, keyword={}, status={}, page={}, size={}", kbId, keyword, status, page, size);
         List<KnowledgeFileDtos.Response> responses = knowledgeFileService.search(kbId, keyword, status, page, size).stream()
                 .map(KnowledgeFileDtos.Response::from)
                 .toList();
+        log.info("文件列表接口出参: count={}", responses.size());
         return ApiResponse.ok(responses);
     }
 
@@ -68,8 +78,11 @@ public class KnowledgeFileController {
             @PathVariable("kbId") Long kbId,
             @PathVariable("fileId") Long fileId
     ) {
+        log.info("文件详情接口入参: kbId={}, fileId={}", kbId, fileId);
         KnowledgeFile knowledgeFile = knowledgeFileService.get(kbId, fileId);
-        return ApiResponse.ok(KnowledgeFileDtos.Response.from(knowledgeFile));
+        KnowledgeFileDtos.Response response = KnowledgeFileDtos.Response.from(knowledgeFile);
+        log.info("文件详情接口出参: id={}, filename={}, status={}", response.id(), response.originalFilename(), response.fileStatus());
+        return ApiResponse.ok(response);
     }
 
     @GetMapping("/{fileId}/download")
@@ -77,14 +90,21 @@ public class KnowledgeFileController {
             @PathVariable("kbId") Long kbId,
             @PathVariable("fileId") Long fileId
     ) {
+        log.info("文件下载接口入参: kbId={}, fileId={}", kbId, fileId);
         KnowledgeFile knowledgeFile = knowledgeFileService.get(kbId, fileId);
         InputStream inputStream = knowledgeFileService.download(kbId, fileId);
         MediaType mediaType = knowledgeFile.contentType() == null || knowledgeFile.contentType().isBlank()
                 ? MediaType.APPLICATION_OCTET_STREAM
                 : MediaType.parseMediaType(knowledgeFile.contentType());
+        if (knowledgeFile.contentType() == null || knowledgeFile.contentType().isBlank()) {
+            log.info("文件下载接口分支: contentType 为空, 使用默认 application/octet-stream, fileId={}", fileId);
+        } else {
+            log.info("文件下载接口分支: 使用文件 contentType={}, fileId={}", knowledgeFile.contentType(), fileId);
+        }
         ContentDisposition contentDisposition = ContentDisposition.attachment()
                 .filename(knowledgeFile.originalFilename(), StandardCharsets.UTF_8)
                 .build();
+        log.info("文件下载接口出参: filename={}, mediaType={}", knowledgeFile.originalFilename(), mediaType);
         return ResponseEntity.ok()
                 .contentType(mediaType)
                 .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition.toString())
@@ -96,7 +116,9 @@ public class KnowledgeFileController {
             @PathVariable("kbId") Long kbId,
             @PathVariable("fileId") Long fileId
     ) {
+        log.info("文件删除接口入参: kbId={}, fileId={}", kbId, fileId);
         knowledgeFileService.delete(kbId, fileId);
+        log.info("文件删除接口出参: kbId={}, fileId={}, deleted=true", kbId, fileId);
         return ApiResponse.ok(null);
     }
 }
