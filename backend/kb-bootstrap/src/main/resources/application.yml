@@ -30,3 +30,7 @@ app:
       port: 19530
       database: default
       collection-prefix: enterprise_kb
+  index:
+    scheduler:
+      fixed-delay-ms: 5000
+      batch-size: 10

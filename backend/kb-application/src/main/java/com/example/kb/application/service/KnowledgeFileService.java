@@ -21,16 +21,19 @@ public class KnowledgeFileService {
     private final KnowledgeFileRepository fileRepository;
     private final ObjectStorage objectStorage;
     private final VectorIndexCleaner vectorIndexCleaner;
+    private final KnowledgeFileIndexTaskService indexTaskService;
     private final FileTypePolicy fileTypePolicy = new FileTypePolicy();
 
     public KnowledgeFileService(
             KnowledgeFileRepository fileRepository,
             ObjectStorage objectStorage,
-            VectorIndexCleaner vectorIndexCleaner
+            VectorIndexCleaner vectorIndexCleaner,
+            KnowledgeFileIndexTaskService indexTaskService
     ) {
         this.fileRepository = fileRepository;
         this.objectStorage = objectStorage;
         this.vectorIndexCleaner = vectorIndexCleaner;
+        this.indexTaskService = indexTaskService;
     }
 
     public KnowledgeFile upload(Long knowledgeBaseId, String filename, String contentType, InputStream inputStream, long size) {
@@ -65,13 +68,15 @@ public class KnowledgeFileService {
                 storedObject.bucket(),
                 storedObject.objectKey(),
                 fileType,
-                FileStatus.UPLOADED,
+                FileStatus.PENDING_PARSE,
                 null,
                 now,
                 now
         );
         KnowledgeFile saved = fileRepository.save(file);
         log.info("上传文件出参: id={}, knowledgeBaseId={}, filename={}, status={}", saved.id(), saved.knowledgeBaseId(), saved.originalFilename(), saved.fileStatus());
+        indexTaskService.createPendingTask(saved.knowledgeBaseId(), saved.id());
+        log.info("上传文件分支: 已创建索引任务, fileId={}", saved.id());
         return saved;
     }
 
