@@ -36,7 +36,7 @@ public class KnowledgeFileController {
 
     @PostMapping
     public ApiResponse<KnowledgeFileDtos.Response> upload(
-            @PathVariable Long kbId,
+            @PathVariable("kbId") Long kbId,
             @RequestPart("file") MultipartFile file
     ) throws IOException {
         KnowledgeFile knowledgeFile = knowledgeFileService.upload(
@@ -51,11 +51,11 @@ public class KnowledgeFileController {
 
     @GetMapping
     public ApiResponse<List<KnowledgeFileDtos.Response>> list(
-            @PathVariable Long kbId,
-            @RequestParam(required = false) String keyword,
-            @RequestParam(required = false) String status,
-            @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size
+            @PathVariable("kbId") Long kbId,
+            @RequestParam(name = "keyword", required = false) String keyword,
+            @RequestParam(name = "status", required = false) String status,
+            @RequestParam(name = "page", defaultValue = "1") int page,
+            @RequestParam(name = "size", defaultValue = "20") int size
     ) {
         List<KnowledgeFileDtos.Response> responses = knowledgeFileService.search(kbId, keyword, status, page, size).stream()
                 .map(KnowledgeFileDtos.Response::from)
@@ -64,13 +64,19 @@ public class KnowledgeFileController {
     }
 
     @GetMapping("/{fileId}")
-    public ApiResponse<KnowledgeFileDtos.Response> get(@PathVariable Long kbId, @PathVariable Long fileId) {
+    public ApiResponse<KnowledgeFileDtos.Response> get(
+            @PathVariable("kbId") Long kbId,
+            @PathVariable("fileId") Long fileId
+    ) {
         KnowledgeFile knowledgeFile = knowledgeFileService.get(kbId, fileId);
         return ApiResponse.ok(KnowledgeFileDtos.Response.from(knowledgeFile));
     }
 
     @GetMapping("/{fileId}/download")
-    public ResponseEntity<InputStreamResource> download(@PathVariable Long kbId, @PathVariable Long fileId) {
+    public ResponseEntity<InputStreamResource> download(
+            @PathVariable("kbId") Long kbId,
+            @PathVariable("fileId") Long fileId
+    ) {
         KnowledgeFile knowledgeFile = knowledgeFileService.get(kbId, fileId);
         InputStream inputStream = knowledgeFileService.download(kbId, fileId);
         MediaType mediaType = knowledgeFile.contentType() == null || knowledgeFile.contentType().isBlank()
@@ -86,7 +92,10 @@ public class KnowledgeFileController {
     }
 
     @DeleteMapping("/{fileId}")
-    public ApiResponse<Void> delete(@PathVariable Long kbId, @PathVariable Long fileId) {
+    public ApiResponse<Void> delete(
+            @PathVariable("kbId") Long kbId,
+            @PathVariable("fileId") Long fileId
+    ) {
         knowledgeFileService.delete(kbId, fileId);
         return ApiResponse.ok(null);
     }

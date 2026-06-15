@@ -41,14 +41,14 @@ public class KnowledgeBaseController {
     }
 
     @GetMapping("/{id}")
-    public ApiResponse<KnowledgeBaseDtos.Response> get(@PathVariable Long id) {
+    public ApiResponse<KnowledgeBaseDtos.Response> get(@PathVariable("id") Long id) {
         KnowledgeBase knowledgeBase = knowledgeBaseService.get(id);
         return ApiResponse.ok(KnowledgeBaseDtos.Response.from(knowledgeBase));
     }
 
     @PutMapping("/{id}")
     public ApiResponse<KnowledgeBaseDtos.Response> update(
-            @PathVariable Long id,
+            @PathVariable("id") Long id,
             @Valid @RequestBody KnowledgeBaseDtos.UpdateRequest request
     ) {
         KnowledgeBase knowledgeBase = knowledgeBaseService.update(id, request.name(), request.description());
@@ -56,7 +56,7 @@ public class KnowledgeBaseController {
     }
 
     @DeleteMapping("/{id}")
-    public ApiResponse<Void> delete(@PathVariable Long id) {
+    public ApiResponse<Void> delete(@PathVariable("id") Long id) {
         knowledgeBaseService.delete(id);
         return ApiResponse.ok(null);
     }
