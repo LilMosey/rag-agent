@@ -1,4 +1,4 @@
-import { Button, Empty, Input, Layout, List, message, Modal, Select, Space, Typography, Upload } from 'antd';
+import { Button, Empty, Input, Layout, List, message, Popconfirm, Select, Typography, Upload } from 'antd';
 import type { UploadProps } from 'antd';
 import { Edit3, Plus, Search, Trash2, UploadCloud } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
@@ -8,6 +8,7 @@ import {
   listKnowledgeBases,
   updateKnowledgeBase
 } from '../api/knowledgeBaseApi';
+import { toApiError } from '../api/client';
 import { deleteFile, downloadFile, listFiles, uploadFile } from '../api/knowledgeFileApi';
 import { FileDetailDrawer } from '../components/FileDetailDrawer';
 import { FileTable } from '../components/FileTable';
@@ -54,8 +55,13 @@ export function KnowledgeBaseLayout() {
     try {
       const data = await listKnowledgeBases();
       setKnowledgeBases(data);
-      if (!selectedKnowledgeBaseId && data.length > 0) {
+      const selectedExists = selectedKnowledgeBaseId
+        ? data.some((knowledgeBase) => knowledgeBase.id === selectedKnowledgeBaseId)
+        : false;
+      if (!selectedExists && data.length > 0) {
         setSelectedKnowledgeBaseId(data[0].id);
+      } else if (!selectedExists) {
+        setSelectedKnowledgeBaseId(undefined);
       }
     } catch (error) {
       messageApi.error(toErrorMessage(error));
@@ -101,26 +107,21 @@ export function KnowledgeBaseLayout() {
     }
   }
 
-  function confirmDeleteKnowledgeBase(knowledgeBase: KnowledgeBase) {
-    Modal.confirm({
-      title: '删除知识库',
-      content: `确认删除“${knowledgeBase.name}”？如果知识库下仍有文件，后端会拒绝删除。`,
-      okText: '删除',
-      okButtonProps: { danger: true },
-      cancelText: '取消',
-      onOk: async () => {
-        try {
-          await deleteKnowledgeBase(knowledgeBase.id);
-          messageApi.success('知识库已删除');
-          if (selectedKnowledgeBaseId === knowledgeBase.id) {
-            setSelectedKnowledgeBaseId(undefined);
-          }
-          await loadKnowledgeBases();
-        } catch (error) {
-          messageApi.error(toErrorMessage(error));
-        }
+  async function confirmDeleteKnowledgeBase(knowledgeBase: KnowledgeBase) {
+    try {
+      console.info('删除知识库请求开始', knowledgeBase);
+      await deleteKnowledgeBase(knowledgeBase.id);
+      console.info('删除知识库请求成功', knowledgeBase);
+      messageApi.success('知识库已删除');
+      const nextKnowledgeBases = knowledgeBases.filter((item) => item.id !== knowledgeBase.id);
+      setKnowledgeBases(nextKnowledgeBases);
+      if (selectedKnowledgeBaseId === knowledgeBase.id) {
+        setSelectedKnowledgeBaseId(nextKnowledgeBases[0]?.id);
       }
-    });
+      await loadKnowledgeBases();
+    } catch (error) {
+      messageApi.error(toErrorMessage(error));
+    }
   }
 
   const uploadProps: UploadProps = {
@@ -161,29 +162,24 @@ export function KnowledgeBaseLayout() {
     }
   }
 
-  function confirmDeleteFile(file: KnowledgeFile) {
+  async function handleDeleteFile(file: KnowledgeFile) {
     if (!selectedKnowledgeBaseId) {
       return;
     }
-    Modal.confirm({
-      title: '删除文件',
-      content: `确认删除“${file.originalFilename}”？该操作会删除元数据和原始文件。`,
-      okText: '删除',
-      okButtonProps: { danger: true },
-      cancelText: '取消',
-      onOk: async () => {
-        if (!selectedKnowledgeBaseId) {
-          return;
-        }
-        try {
-          await deleteFile(selectedKnowledgeBaseId, file.id);
-          messageApi.success('文件已删除');
-          await loadFiles(selectedKnowledgeBaseId, keyword, status);
-        } catch (error) {
-          messageApi.error(toErrorMessage(error));
-        }
+    const knowledgeBaseId = selectedKnowledgeBaseId;
+    try {
+      console.info('删除文件请求开始', { knowledgeBaseId, file });
+      await deleteFile(knowledgeBaseId, file.id);
+      console.info('删除文件请求成功', { knowledgeBaseId, file });
+      messageApi.success('文件已删除');
+      setFiles((current) => current.filter((item) => item.id !== file.id));
+      if (detailFile?.id === file.id) {
+        setDetailFile(undefined);
       }
-    });
+      await loadFiles(knowledgeBaseId, keyword, status);
+    } catch (error) {
+      messageApi.error(toErrorMessage(error));
+    }
   }
 
   return (
@@ -222,16 +218,26 @@ export function KnowledgeBaseLayout() {
                     setModalOpen(true);
                   }}
                 />,
-                <Button
-                  key="delete"
-                  danger
-                  type="text"
-                  icon={<Trash2 size={15} />}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    confirmDeleteKnowledgeBase(knowledgeBase);
+                <Popconfirm
+                  key="delete-confirm"
+                  title="删除知识库"
+                  description={`确认删除“${knowledgeBase.name}”？`}
+                  okText="删除"
+                  cancelText="取消"
+                  okButtonProps={{ danger: true }}
+                  onConfirm={(event) => {
+                    event?.stopPropagation();
+                    void confirmDeleteKnowledgeBase(knowledgeBase);
                   }}
-                />
+                  onCancel={(event) => event?.stopPropagation()}
+                >
+                  <Button
+                    danger
+                    type="text"
+                    icon={<Trash2 size={15} />}
+                    onClick={(event) => event.stopPropagation()}
+                  />
+                </Popconfirm>
               ]}
             >
               <List.Item.Meta title={knowledgeBase.name} description={knowledgeBase.description || '无描述'} />
@@ -282,7 +288,7 @@ export function KnowledgeBaseLayout() {
                 loading={fileLoading}
                 onDetail={setDetailFile}
                 onDownload={handleDownload}
-                onDelete={confirmDeleteFile}
+                onDelete={(file) => void handleDeleteFile(file)}
               />
             </>
           ) : (
@@ -314,8 +320,5 @@ function isAllowedFile(filename: string): boolean {
 }
 
 function toErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return '操作失败';
+  return toApiError(error).message;
 }

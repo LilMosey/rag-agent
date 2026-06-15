@@ -17,5 +17,6 @@ export async function updateKnowledgeBase(id: number, payload: KnowledgeBasePayl
 }
 
 export async function deleteKnowledgeBase(id: number): Promise<void> {
-  await client.delete(`/knowledge-bases/${id}`);
+  const response = await client.delete(`/knowledge-bases/${id}`);
+  unwrap<void>(response);
 }

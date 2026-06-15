@@ -27,7 +27,8 @@ export async function uploadFile(knowledgeBaseId: number, file: File): Promise<K
 }
 
 export async function deleteFile(knowledgeBaseId: number, fileId: number): Promise<void> {
-  await client.delete(`/knowledge-bases/${knowledgeBaseId}/files/${fileId}`);
+  const response = await client.delete(`/knowledge-bases/${knowledgeBaseId}/files/${fileId}`);
+  unwrap<void>(response);
 }
 
 export async function downloadFile(knowledgeBaseId: number, file: KnowledgeFile): Promise<void> {

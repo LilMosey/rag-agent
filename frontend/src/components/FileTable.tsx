@@ -1,4 +1,4 @@
-import { Button, Space, Table, Tag } from 'antd';
+import { Button, Popconfirm, Space, Table, Tag } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { Download, Info, Trash2 } from 'lucide-react';
@@ -50,7 +50,16 @@ export function FileTable({ files, loading, onDetail, onDownload, onDelete }: Fi
         <Space size={4}>
           <Button type="text" icon={<Info size={16} />} onClick={() => onDetail(file)} />
           <Button type="text" icon={<Download size={16} />} onClick={() => onDownload(file)} />
-          <Button danger type="text" icon={<Trash2 size={16} />} onClick={() => onDelete(file)} />
+          <Popconfirm
+            title="删除文件"
+            description={`确认删除“${file.originalFilename}”？`}
+            okText="删除"
+            cancelText="取消"
+            okButtonProps={{ danger: true }}
+            onConfirm={() => onDelete(file)}
+          >
+            <Button danger type="text" icon={<Trash2 size={16} />} />
+          </Popconfirm>
         </Space>
       )
     }
