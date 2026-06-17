@@ -1,5 +1,6 @@
 package com.example.kb.infrastructure.index;
 
+import com.example.kb.application.port.DocumentCleaner;
 import com.example.kb.application.port.DocumentParseCommand;
 import com.example.kb.application.port.DocumentParser;
 import com.example.kb.application.port.DocumentParserRegistry;
@@ -26,15 +27,18 @@ public class DocumentIndexPipeline implements IndexPipeline {
     private final KnowledgeFileRepository fileRepository;
     private final ObjectStorage objectStorage;
     private final DocumentParserRegistry parserRegistry;
+    private final DocumentCleaner documentCleaner;
 
     public DocumentIndexPipeline(
             KnowledgeFileRepository fileRepository,
             ObjectStorage objectStorage,
-            DocumentParserRegistry parserRegistry
+            DocumentParserRegistry parserRegistry,
+            DocumentCleaner documentCleaner
     ) {
         this.fileRepository = fileRepository;
         this.objectStorage = objectStorage;
         this.parserRegistry = parserRegistry;
+        this.documentCleaner = documentCleaner;
     }
 
     @Override
@@ -60,11 +64,12 @@ public class DocumentIndexPipeline implements IndexPipeline {
                         inputStream
                 );
                 ParsedDocument parsedDocument = parser.parse(command);
-                int sectionCount = parsedDocument.sections().size();
+                ParsedDocument cleanedDocument = documentCleaner.clean(parsedDocument);
+                int sectionCount = cleanedDocument.sections().size();
                 fileRepository.updateParseStatus(file.knowledgeBaseId(), file.id(), FileStatus.READY, null, LocalDateTime.now());
-                String message = "文档解析成功，sectionCount=" + sectionCount;
+                String message = "文档解析和清洗成功，sectionCount=" + sectionCount;
                 log.info("索引 Pipeline 出参: taskId={}, fileId={}, title={}, sectionCount={}, status=SUCCESS",
-                        task.id(), file.id(), parsedDocument.title(), sectionCount);
+                        task.id(), file.id(), cleanedDocument.title(), sectionCount);
                 return IndexPipeline.IndexPipelineResult.success(message);
             }
         } catch (Exception exception) {
