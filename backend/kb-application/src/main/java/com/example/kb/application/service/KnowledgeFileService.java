@@ -1,8 +1,12 @@
 package com.example.kb.application.service;
 
+import com.example.kb.application.port.ChunkObjectStorage;
+import com.example.kb.application.port.DocumentChunkRepository;
 import com.example.kb.application.port.KnowledgeFileRepository;
 import com.example.kb.application.port.ObjectStorage;
 import com.example.kb.application.port.VectorIndexCleaner;
+import com.example.kb.domain.model.ChunkConfig;
+import com.example.kb.domain.model.ChunkStrategy;
 import com.example.kb.domain.model.FileStatus;
 import com.example.kb.domain.model.FileType;
 import com.example.kb.domain.model.KnowledgeFile;
@@ -24,6 +28,8 @@ public class KnowledgeFileService {
     private final ObjectStorage objectStorage;
     private final VectorIndexCleaner vectorIndexCleaner;
     private final KnowledgeFileIndexTaskService indexTaskService;
+    private final DocumentChunkRepository documentChunkRepository;
+    private final ChunkObjectStorage chunkObjectStorage;
     private final FileTypePolicy fileTypePolicy = new FileTypePolicy();
     private final FileSignaturePolicy fileSignaturePolicy = new FileSignaturePolicy();
 
@@ -31,16 +37,30 @@ public class KnowledgeFileService {
             KnowledgeFileRepository fileRepository,
             ObjectStorage objectStorage,
             VectorIndexCleaner vectorIndexCleaner,
-            KnowledgeFileIndexTaskService indexTaskService
+            KnowledgeFileIndexTaskService indexTaskService,
+            DocumentChunkRepository documentChunkRepository,
+            ChunkObjectStorage chunkObjectStorage
     ) {
         this.fileRepository = fileRepository;
         this.objectStorage = objectStorage;
         this.vectorIndexCleaner = vectorIndexCleaner;
         this.indexTaskService = indexTaskService;
+        this.documentChunkRepository = documentChunkRepository;
+        this.chunkObjectStorage = chunkObjectStorage;
     }
 
-    public KnowledgeFile upload(Long knowledgeBaseId, String filename, String contentType, InputStream inputStream, long size) {
-        log.info("上传文件入参: knowledgeBaseId={}, filename={}, contentType={}, size={}", knowledgeBaseId, filename, contentType, size);
+    public KnowledgeFile upload(
+            Long knowledgeBaseId,
+            String filename,
+            String contentType,
+            InputStream inputStream,
+            long size,
+            ChunkStrategy chunkStrategy,
+            Integer chunkSize,
+            Integer chunkOverlap
+    ) {
+        log.info("上传文件入参: knowledgeBaseId={}, filename={}, contentType={}, size={}, chunkStrategy={}, chunkSize={}, chunkOverlap={}",
+                knowledgeBaseId, filename, contentType, size, chunkStrategyLogName(chunkStrategy), chunkSize, chunkOverlap);
         if (fileRepository.existsByKnowledgeBaseIdAndFilename(knowledgeBaseId, filename)) {
             log.warn("上传文件分支: 同名文件已存在, knowledgeBaseId={}, filename={}", knowledgeBaseId, filename);
             throw new IllegalArgumentException("同一知识库下已存在同名文件，请先删除旧文件。");
@@ -50,6 +70,9 @@ public class KnowledgeFileService {
 
         FileType fileType = fileTypePolicy.detect(filename);
         log.info("上传文件分支: 文件类型识别成功, filename={}, fileType={}", filename, fileType);
+        ChunkConfig chunkConfig = ChunkConfig.normalize(knowledgeBaseId, null, chunkStrategy, chunkSize, chunkOverlap);
+        log.info("上传文件分支: chunk 配置归一化成功, strategy={}, size={}, overlap={}",
+                chunkConfig.chunkStrategy().logName(), chunkConfig.chunkSize(), chunkConfig.chunkOverlap());
         byte[] content;
         try {
             content = inputStream.readAllBytes();
@@ -82,6 +105,9 @@ public class KnowledgeFileService {
                 storedObject.objectKey(),
                 fileType,
                 FileStatus.PENDING_PARSE,
+                chunkConfig.chunkStrategy(),
+                chunkConfig.chunkSize(),
+                chunkConfig.chunkOverlap(),
                 null,
                 now,
                 now
@@ -91,6 +117,13 @@ public class KnowledgeFileService {
         indexTaskService.createPendingTask(saved.knowledgeBaseId(), saved.id());
         log.info("上传文件分支: 已创建索引任务, fileId={}", saved.id());
         return saved;
+    }
+
+    private String chunkStrategyLogName(ChunkStrategy chunkStrategy) {
+        if (chunkStrategy == null) {
+            return "未传入，使用默认策略";
+        }
+        return chunkStrategy.logName();
     }
 
     public List<KnowledgeFile> search(Long knowledgeBaseId, String keyword, String status, int page, int size) {
@@ -121,6 +154,10 @@ public class KnowledgeFileService {
         KnowledgeFile file = get(knowledgeBaseId, fileId);
         log.info("删除文件分支: 开始清理向量索引, fileId={}", fileId);
         vectorIndexCleaner.deleteByFileId(fileId);
+        log.info("删除文件分支: 开始删除 chunk 正文, knowledgeBaseId={}, fileId={}", knowledgeBaseId, fileId);
+        chunkObjectStorage.deleteChunksByFile(knowledgeBaseId, fileId);
+        log.info("删除文件分支: 开始删除 chunk 元数据, fileId={}", fileId);
+        documentChunkRepository.deleteByFileId(fileId);
         log.info("删除文件分支: 开始删除对象存储, bucket={}, objectKey={}", file.storageBucket(), file.storageObjectKey());
         objectStorage.deleteObject(file.storageBucket(), file.storageObjectKey());
         log.info("删除文件分支: 开始删除数据库元数据, knowledgeBaseId={}, fileId={}", knowledgeBaseId, fileId);

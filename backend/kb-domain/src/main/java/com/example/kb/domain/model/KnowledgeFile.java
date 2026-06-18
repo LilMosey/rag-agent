@@ -14,6 +14,9 @@ public record KnowledgeFile(
         String storageObjectKey,
         FileType fileType,
         FileStatus fileStatus,
+        ChunkStrategy chunkStrategy,
+        int chunkSize,
+        int chunkOverlap,
         String parseError,
         LocalDateTime createdAt,
         LocalDateTime updatedAt

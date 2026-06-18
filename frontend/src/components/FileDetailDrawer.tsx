@@ -20,6 +20,9 @@ export function FileDetailDrawer({ open, file, onClose }: FileDetailDrawerProps)
           <Descriptions.Item label="状态">
             <Tag color={statusColor(file.fileStatus)}>{file.fileStatus}</Tag>
           </Descriptions.Item>
+          <Descriptions.Item label="切分策略">{formatChunkStrategy(file.chunkStrategy)}</Descriptions.Item>
+          <Descriptions.Item label="块大小">{file.chunkSize ?? '-'}</Descriptions.Item>
+          <Descriptions.Item label="重叠长度">{file.chunkOverlap ?? '-'}</Descriptions.Item>
           <Descriptions.Item label="SHA256">
             <Typography.Text copyable>{file.checksumSha256}</Typography.Text>
           </Descriptions.Item>
@@ -50,6 +53,19 @@ export function statusColor(status: string): string {
     return 'default';
   }
   return 'gold';
+}
+
+function formatChunkStrategy(strategy: string | undefined): string {
+  if (strategy === 'FIXED_SIZE') {
+    return '固定大小';
+  }
+  if (strategy === 'SECTION') {
+    return '按章节';
+  }
+  if (strategy === 'RECURSIVE') {
+    return '递归切分';
+  }
+  return strategy || '-';
 }
 
 export function formatFileSize(size: number): string {

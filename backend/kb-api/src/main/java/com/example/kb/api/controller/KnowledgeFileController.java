@@ -3,6 +3,7 @@ package com.example.kb.api.controller;
 import com.example.kb.api.dto.ApiResponse;
 import com.example.kb.api.dto.KnowledgeFileDtos;
 import com.example.kb.application.service.KnowledgeFileService;
+import com.example.kb.domain.model.ChunkStrategy;
 import com.example.kb.domain.model.KnowledgeFile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,20 +42,33 @@ public class KnowledgeFileController {
     @PostMapping
     public ApiResponse<KnowledgeFileDtos.Response> upload(
             @PathVariable("kbId") Long kbId,
-            @RequestPart("file") MultipartFile file
+            @RequestPart("file") MultipartFile file,
+            @RequestParam(name = "chunkStrategy", required = false) ChunkStrategy chunkStrategy,
+            @RequestParam(name = "chunkSize", required = false) Integer chunkSize,
+            @RequestParam(name = "chunkOverlap", required = false) Integer chunkOverlap
     ) throws IOException {
-        log.info("文件上传接口入参: kbId={}, originalFilename={}, contentType={}, size={}",
-                kbId, file.getOriginalFilename(), file.getContentType(), file.getSize());
+        log.info("文件上传接口入参: kbId={}, originalFilename={}, contentType={}, size={}, chunkStrategy={}, chunkSize={}, chunkOverlap={}",
+                kbId, file.getOriginalFilename(), file.getContentType(), file.getSize(), chunkStrategyLogName(chunkStrategy), chunkSize, chunkOverlap);
         KnowledgeFile knowledgeFile = knowledgeFileService.upload(
                 kbId,
                 file.getOriginalFilename(),
                 file.getContentType(),
                 file.getInputStream(),
-                file.getSize()
+                file.getSize(),
+                chunkStrategy,
+                chunkSize,
+                chunkOverlap
         );
         KnowledgeFileDtos.Response response = KnowledgeFileDtos.Response.from(knowledgeFile);
         log.info("文件上传接口出参: id={}, filename={}, status={}", response.id(), response.originalFilename(), response.fileStatus());
         return ApiResponse.ok(response);
+    }
+
+    private String chunkStrategyLogName(ChunkStrategy chunkStrategy) {
+        if (chunkStrategy == null) {
+            return "未传入，使用默认策略";
+        }
+        return chunkStrategy.logName();
     }
 
     @GetMapping

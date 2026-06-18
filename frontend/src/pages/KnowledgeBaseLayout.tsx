@@ -1,4 +1,4 @@
-import { Button, Empty, Input, Layout, List, message, Popconfirm, Select, Typography, Upload } from 'antd';
+import { Button, Empty, Input, InputNumber, Layout, List, message, Popconfirm, Select, Space, Typography, Upload } from 'antd';
 import type { UploadProps } from 'antd';
 import { Edit3, Plus, Search, Trash2, UploadCloud } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
@@ -13,7 +13,7 @@ import { deleteFile, downloadFile, listFiles, uploadFile } from '../api/knowledg
 import { FileDetailDrawer } from '../components/FileDetailDrawer';
 import { FileTable } from '../components/FileTable';
 import { KnowledgeBaseModal } from '../components/KnowledgeBaseModal';
-import type { FileStatus, KnowledgeBase, KnowledgeBasePayload, KnowledgeFile } from '../types/domain';
+import type { ChunkStrategy, FileStatus, KnowledgeBase, KnowledgeBasePayload, KnowledgeFile } from '../types/domain';
 
 const { Header, Sider, Content } = Layout;
 
@@ -32,6 +32,9 @@ export function KnowledgeBaseLayout() {
   const [keyword, setKeyword] = useState('');
   const [status, setStatus] = useState<FileStatus | ''>('');
   const [detailFile, setDetailFile] = useState<KnowledgeFile>();
+  const [chunkStrategy, setChunkStrategy] = useState<ChunkStrategy>('RECURSIVE');
+  const [chunkSize, setChunkSize] = useState(1000);
+  const [chunkOverlap, setChunkOverlap] = useState(150);
 
   const selectedKnowledgeBase = useMemo(
     () => knowledgeBases.find((knowledgeBase) => knowledgeBase.id === selectedKnowledgeBaseId),
@@ -142,8 +145,17 @@ export function KnowledgeBaseLayout() {
       messageApi.error(toUnsupportedFileMessage(file.name));
       return;
     }
+    const validationMessage = validateChunkOptions(chunkSize, chunkOverlap);
+    if (validationMessage) {
+      messageApi.error(validationMessage);
+      return;
+    }
     try {
-      await uploadFile(selectedKnowledgeBaseId, file);
+      await uploadFile(selectedKnowledgeBaseId, file, {
+        chunkStrategy,
+        chunkSize,
+        chunkOverlap
+      });
       messageApi.success('文件已上传');
       await loadFiles(selectedKnowledgeBaseId, keyword, status);
     } catch (error) {
@@ -251,11 +263,44 @@ export function KnowledgeBaseLayout() {
             <Typography.Title level={3}>{selectedKnowledgeBase?.name || '请选择知识库'}</Typography.Title>
             <Typography.Text type="secondary">{selectedKnowledgeBase?.description || '创建或选择知识库后管理文件'}</Typography.Text>
           </div>
-          <Upload {...uploadProps} disabled={!selectedKnowledgeBaseId}>
-            <Button type="primary" icon={<UploadCloud size={16} />} disabled={!selectedKnowledgeBaseId}>
-              上传文件
-            </Button>
-          </Upload>
+          <Space align="center" wrap>
+            <Select<ChunkStrategy>
+              value={chunkStrategy}
+              onChange={setChunkStrategy}
+              disabled={!selectedKnowledgeBaseId}
+              style={{ width: 132 }}
+              options={[
+                { label: '递归切分', value: 'RECURSIVE' },
+                { label: '固定大小', value: 'FIXED_SIZE' },
+                { label: '按章节', value: 'SECTION' }
+              ]}
+            />
+            <InputNumber
+              value={chunkSize}
+              min={200}
+              max={4000}
+              step={100}
+              addonBefore="块大小"
+              disabled={!selectedKnowledgeBaseId}
+              style={{ width: 150 }}
+              onChange={(value) => setChunkSize(value ?? 0)}
+            />
+            <InputNumber
+              value={chunkOverlap}
+              min={0}
+              max={1000}
+              step={50}
+              addonBefore="重叠"
+              disabled={!selectedKnowledgeBaseId}
+              style={{ width: 140 }}
+              onChange={(value) => setChunkOverlap(value ?? 0)}
+            />
+            <Upload {...uploadProps} disabled={!selectedKnowledgeBaseId}>
+              <Button type="primary" icon={<UploadCloud size={16} />} disabled={!selectedKnowledgeBaseId}>
+                上传文件
+              </Button>
+            </Upload>
+          </Space>
         </Header>
         <Content className="app-content">
           {selectedKnowledgeBase ? (
@@ -328,6 +373,19 @@ function toUnsupportedFileMessage(filename: string): string {
     return '当前版本仅支持 DOCX，不支持旧版 DOC 文件，请另存为 DOCX 后上传。';
   }
   return '仅支持上传 DOCX、Markdown、TXT 文件。';
+}
+
+function validateChunkOptions(chunkSize: number, chunkOverlap: number): string | undefined {
+  if (chunkSize < 200 || chunkSize > 4000) {
+    return '块大小必须在 200 到 4000 之间。';
+  }
+  if (chunkOverlap < 0 || chunkOverlap > 1000) {
+    return '重叠长度必须在 0 到 1000 之间。';
+  }
+  if (chunkOverlap >= chunkSize) {
+    return '重叠长度必须小于块大小。';
+  }
+  return undefined;
 }
 
 function toErrorMessage(error: unknown): string {

@@ -1,11 +1,17 @@
 import { client, unwrap } from './client';
-import type { FileStatus, KnowledgeFile } from '../types/domain';
+import type { ChunkStrategy, FileStatus, KnowledgeFile } from '../types/domain';
 
 export interface FileQuery {
   keyword?: string;
   status?: FileStatus | '';
   page?: number;
   size?: number;
+}
+
+export interface UploadFileOptions {
+  chunkStrategy: ChunkStrategy;
+  chunkSize: number;
+  chunkOverlap: number;
 }
 
 export async function listFiles(knowledgeBaseId: number, query: FileQuery): Promise<KnowledgeFile[]> {
@@ -15,9 +21,16 @@ export async function listFiles(knowledgeBaseId: number, query: FileQuery): Prom
   return unwrap<KnowledgeFile[]>(response);
 }
 
-export async function uploadFile(knowledgeBaseId: number, file: File): Promise<KnowledgeFile> {
+export async function uploadFile(
+  knowledgeBaseId: number,
+  file: File,
+  options: UploadFileOptions
+): Promise<KnowledgeFile> {
   const formData = new FormData();
   formData.append('file', file);
+  formData.append('chunkStrategy', options.chunkStrategy);
+  formData.append('chunkSize', String(options.chunkSize));
+  formData.append('chunkOverlap', String(options.chunkOverlap));
   const response = await client.post(`/knowledge-bases/${knowledgeBaseId}/files`, formData, {
     headers: {
       'Content-Type': 'multipart/form-data'

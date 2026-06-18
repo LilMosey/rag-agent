@@ -21,6 +21,9 @@ public class KnowledgeFileEntity {
     private String storageObjectKey;
     private String fileType;
     private String fileStatus;
+    private String chunkStrategy;
+    private Integer chunkSize;
+    private Integer chunkOverlap;
     private String parseError;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
@@ -111,6 +114,30 @@ public class KnowledgeFileEntity {
 
     public void setFileStatus(String fileStatus) {
         this.fileStatus = fileStatus;
+    }
+
+    public String getChunkStrategy() {
+        return chunkStrategy;
+    }
+
+    public void setChunkStrategy(String chunkStrategy) {
+        this.chunkStrategy = chunkStrategy;
+    }
+
+    public Integer getChunkSize() {
+        return chunkSize;
+    }
+
+    public void setChunkSize(Integer chunkSize) {
+        this.chunkSize = chunkSize;
+    }
+
+    public Integer getChunkOverlap() {
+        return chunkOverlap;
+    }
+
+    public void setChunkOverlap(Integer chunkOverlap) {
+        this.chunkOverlap = chunkOverlap;
     }
 
     public String getParseError() {

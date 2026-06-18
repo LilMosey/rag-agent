@@ -8,15 +8,18 @@ import com.example.kb.application.port.IndexPipeline;
 import com.example.kb.application.port.KnowledgeFileRepository;
 import com.example.kb.application.port.ObjectStorage;
 import com.example.kb.domain.model.FileStatus;
+import com.example.kb.domain.model.DocumentChunk;
 import com.example.kb.domain.model.KnowledgeFile;
 import com.example.kb.domain.model.KnowledgeFileIndexTask;
 import com.example.kb.domain.model.ParsedDocument;
+import com.example.kb.application.service.DocumentChunkService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.io.InputStream;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Component
 public class DocumentIndexPipeline implements IndexPipeline {
@@ -28,17 +31,20 @@ public class DocumentIndexPipeline implements IndexPipeline {
     private final ObjectStorage objectStorage;
     private final DocumentParserRegistry parserRegistry;
     private final DocumentCleaner documentCleaner;
+    private final DocumentChunkService documentChunkService;
 
     public DocumentIndexPipeline(
             KnowledgeFileRepository fileRepository,
             ObjectStorage objectStorage,
             DocumentParserRegistry parserRegistry,
-            DocumentCleaner documentCleaner
+            DocumentCleaner documentCleaner,
+            DocumentChunkService documentChunkService
     ) {
         this.fileRepository = fileRepository;
         this.objectStorage = objectStorage;
         this.parserRegistry = parserRegistry;
         this.documentCleaner = documentCleaner;
+        this.documentChunkService = documentChunkService;
     }
 
     @Override
@@ -66,10 +72,12 @@ public class DocumentIndexPipeline implements IndexPipeline {
                 ParsedDocument parsedDocument = parser.parse(command);
                 ParsedDocument cleanedDocument = documentCleaner.clean(parsedDocument);
                 int sectionCount = cleanedDocument.sections().size();
+                List<DocumentChunk> chunks = documentChunkService.rebuildChunks(file, cleanedDocument);
+                int chunkCount = chunks.size();
                 fileRepository.updateParseStatus(file.knowledgeBaseId(), file.id(), FileStatus.READY, null, LocalDateTime.now());
-                String message = "文档解析和清洗成功，sectionCount=" + sectionCount;
-                log.info("索引 Pipeline 出参: taskId={}, fileId={}, title={}, sectionCount={}, status=SUCCESS",
-                        task.id(), file.id(), cleanedDocument.title(), sectionCount);
+                String message = "文档解析、清洗和 chunk 成功，sectionCount=" + sectionCount + ", chunkCount=" + chunkCount;
+                log.info("索引 Pipeline 出参: taskId={}, fileId={}, title={}, sectionCount={}, chunkCount={}, status=SUCCESS",
+                        task.id(), file.id(), cleanedDocument.title(), sectionCount, chunkCount);
                 return IndexPipeline.IndexPipelineResult.success(message);
             }
         } catch (Exception exception) {

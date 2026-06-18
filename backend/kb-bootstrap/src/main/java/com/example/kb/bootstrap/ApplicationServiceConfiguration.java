@@ -1,5 +1,8 @@
 package com.example.kb.bootstrap;
 
+import com.example.kb.application.port.ChunkObjectStorage;
+import com.example.kb.application.port.DocumentChunkRepository;
+import com.example.kb.application.port.DocumentChunker;
 import com.example.kb.application.port.IndexPipeline;
 import com.example.kb.application.port.KnowledgeBaseRepository;
 import com.example.kb.application.port.KnowledgeFileRepository;
@@ -7,6 +10,7 @@ import com.example.kb.application.port.KnowledgeFileIndexTaskRepository;
 import com.example.kb.application.port.ObjectStorage;
 import com.example.kb.application.port.VectorIndexCleaner;
 import com.example.kb.application.service.KnowledgeBaseService;
+import com.example.kb.application.service.DocumentChunkService;
 import com.example.kb.application.service.KnowledgeFileIndexTaskService;
 import com.example.kb.application.service.KnowledgeFileService;
 import org.springframework.context.annotation.Bean;
@@ -25,13 +29,17 @@ public class ApplicationServiceConfiguration {
             KnowledgeFileRepository knowledgeFileRepository,
             ObjectStorage objectStorage,
             VectorIndexCleaner vectorIndexCleaner,
-            KnowledgeFileIndexTaskService knowledgeFileIndexTaskService
+            KnowledgeFileIndexTaskService knowledgeFileIndexTaskService,
+            DocumentChunkRepository documentChunkRepository,
+            ChunkObjectStorage chunkObjectStorage
     ) {
         return new KnowledgeFileService(
                 knowledgeFileRepository,
                 objectStorage,
                 vectorIndexCleaner,
-                knowledgeFileIndexTaskService
+                knowledgeFileIndexTaskService,
+                documentChunkRepository,
+                chunkObjectStorage
         );
     }
 
@@ -41,5 +49,14 @@ public class ApplicationServiceConfiguration {
             IndexPipeline indexPipeline
     ) {
         return new KnowledgeFileIndexTaskService(knowledgeFileIndexTaskRepository, indexPipeline);
+    }
+
+    @Bean
+    public DocumentChunkService documentChunkService(
+            DocumentChunker documentChunker,
+            DocumentChunkRepository documentChunkRepository,
+            ChunkObjectStorage chunkObjectStorage
+    ) {
+        return new DocumentChunkService(documentChunker, documentChunkRepository, chunkObjectStorage);
     }
 }

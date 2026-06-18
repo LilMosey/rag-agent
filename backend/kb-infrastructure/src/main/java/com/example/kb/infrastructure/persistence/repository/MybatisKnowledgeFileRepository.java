@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.example.kb.application.port.KnowledgeFileRepository;
+import com.example.kb.domain.model.ChunkStrategy;
 import com.example.kb.domain.model.FileStatus;
 import com.example.kb.domain.model.FileType;
 import com.example.kb.domain.model.KnowledgeFile;
@@ -144,6 +145,9 @@ public class MybatisKnowledgeFileRepository implements KnowledgeFileRepository {
                 entity.getStorageObjectKey(),
                 FileType.valueOf(entity.getFileType()),
                 FileStatus.valueOf(entity.getFileStatus()),
+                ChunkStrategy.valueOf(entity.getChunkStrategy()),
+                entity.getChunkSize(),
+                entity.getChunkOverlap(),
                 entity.getParseError(),
                 entity.getCreatedAt(),
                 entity.getUpdatedAt()
@@ -163,6 +167,9 @@ public class MybatisKnowledgeFileRepository implements KnowledgeFileRepository {
         entity.setStorageObjectKey(file.storageObjectKey());
         entity.setFileType(file.fileType().name());
         entity.setFileStatus(file.fileStatus().name());
+        entity.setChunkStrategy(file.chunkStrategy().name());
+        entity.setChunkSize(file.chunkSize());
+        entity.setChunkOverlap(file.chunkOverlap());
         entity.setParseError(file.parseError());
         entity.setCreatedAt(file.createdAt());
         entity.setUpdatedAt(file.updatedAt());

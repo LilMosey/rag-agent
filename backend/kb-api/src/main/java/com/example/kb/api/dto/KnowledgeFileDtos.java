@@ -2,6 +2,7 @@ package com.example.kb.api.dto;
 
 import com.example.kb.domain.model.FileStatus;
 import com.example.kb.domain.model.FileType;
+import com.example.kb.domain.model.ChunkStrategy;
 import com.example.kb.domain.model.KnowledgeFile;
 
 import java.time.LocalDateTime;
@@ -23,6 +24,9 @@ public final class KnowledgeFileDtos {
             String storageObjectKey,
             FileType fileType,
             FileStatus fileStatus,
+            ChunkStrategy chunkStrategy,
+            int chunkSize,
+            int chunkOverlap,
             String parseError,
             LocalDateTime createdAt,
             LocalDateTime updatedAt
@@ -41,6 +45,9 @@ public final class KnowledgeFileDtos {
                     file.storageObjectKey(),
                     file.fileType(),
                     file.fileStatus(),
+                    file.chunkStrategy(),
+                    file.chunkSize(),
+                    file.chunkOverlap(),
                     file.parseError(),
                     file.createdAt(),
                     file.updatedAt()

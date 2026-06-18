@@ -1,5 +1,6 @@
 export type FileStatus = 'UPLOADED' | 'PENDING_PARSE' | 'PARSING' | 'PARSE_FAILED' | 'READY' | 'DISABLED';
 export type FileType = 'WORD' | 'MARKDOWN' | 'TEXT' | 'PDF_RESERVED';
+export type ChunkStrategy = 'FIXED_SIZE' | 'SECTION' | 'RECURSIVE';
 
 export interface ApiResponse<T> {
   success: boolean;
@@ -27,6 +28,9 @@ export interface KnowledgeFile {
   storageObjectKey: string;
   fileType: FileType;
   fileStatus: FileStatus;
+  chunkStrategy: ChunkStrategy;
+  chunkSize: number;
+  chunkOverlap: number;
   parseError?: string;
   createdAt: string;
   updatedAt: string;
