@@ -10,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Repository;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Repository
@@ -41,6 +42,25 @@ public class MybatisDocumentChunkRepository implements DocumentChunkRepository {
         DocumentChunk saved = toDomain(entity);
         log.info("保存 chunk 元数据出参: id={}, fileId={}, chunkIndex={}", saved.id(), saved.fileId(), saved.chunkIndex());
         return saved;
+    }
+
+    @Override
+    public List<DocumentChunk> saveBatch(List<DocumentChunk> chunks) {
+        log.info("批量保存 chunk 元数据入参: count={}", chunks.size());
+        if (chunks.isEmpty()) {
+            log.info("批量保存 chunk 元数据分支: 空列表");
+            return List.of();
+        }
+        List<DocumentChunkEntity> entities = new ArrayList<>(chunks.size());
+        for (DocumentChunk chunk : chunks) {
+            entities.add(toEntity(chunk));
+        }
+        int insertedRows = documentChunkMapper.insertBatch(entities);
+        List<DocumentChunk> savedChunks = entities.stream()
+                .map(this::toDomain)
+                .toList();
+        log.info("批量保存 chunk 元数据出参: insertedRows={}, count={}", insertedRows, savedChunks.size());
+        return savedChunks;
     }
 
     @Override

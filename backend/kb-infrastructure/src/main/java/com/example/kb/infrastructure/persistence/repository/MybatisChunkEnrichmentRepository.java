@@ -11,6 +11,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Repository;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @Repository
 public class MybatisChunkEnrichmentRepository implements ChunkEnrichmentRepository {
 
@@ -41,6 +44,25 @@ public class MybatisChunkEnrichmentRepository implements ChunkEnrichmentReposito
         log.info("保存 enrichment 元数据出参: id={}, fileId={}, chunkId={}, status={}",
                 saved.id(), saved.fileId(), saved.chunkId(), saved.status());
         return saved;
+    }
+
+    @Override
+    public List<ChunkEnrichment> saveBatch(List<ChunkEnrichment> chunkEnrichments) {
+        log.info("批量保存 enrichment 元数据入参: count={}", chunkEnrichments.size());
+        if (chunkEnrichments.isEmpty()) {
+            log.info("批量保存 enrichment 元数据分支: 空列表");
+            return List.of();
+        }
+        List<ChunkEnrichmentEntity> entities = new ArrayList<>(chunkEnrichments.size());
+        for (ChunkEnrichment chunkEnrichment : chunkEnrichments) {
+            entities.add(toEntity(chunkEnrichment));
+        }
+        int insertedRows = chunkEnrichmentMapper.insertBatch(entities);
+        List<ChunkEnrichment> savedEnrichments = entities.stream()
+                .map(this::toDomain)
+                .toList();
+        log.info("批量保存 enrichment 元数据出参: insertedRows={}, count={}", insertedRows, savedEnrichments.size());
+        return savedEnrichments;
     }
 
     private ChunkEnrichment toDomain(ChunkEnrichmentEntity entity) {

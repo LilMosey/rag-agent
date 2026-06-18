@@ -46,15 +46,25 @@ public class DocumentChunkService {
         chunkObjectStorage.deleteChunksByFile(file.knowledgeBaseId(), file.id());
         documentChunkRepository.deleteByFileId(file.id());
         List<DocumentChunker.ChunkDraft> drafts = documentChunker.chunk(document, chunkConfig);
-        List<DocumentChunk> savedChunks = new ArrayList<>(drafts.size());
+        List<ChunkObjectStorage.PutChunkCommand> putChunkCommands = new ArrayList<>(drafts.size());
         for (DocumentChunker.ChunkDraft draft : drafts) {
-            ChunkObjectStorage.StoredChunkObject storedObject = chunkObjectStorage.putChunk(new ChunkObjectStorage.PutChunkCommand(
+            putChunkCommands.add(new ChunkObjectStorage.PutChunkCommand(
                     file.knowledgeBaseId(),
                     file.id(),
                     draft.chunkIndex(),
                     draft.contentHash(),
                     draft.content()
             ));
+        }
+        List<ChunkObjectStorage.StoredChunkObject> storedObjects = chunkObjectStorage.putChunks(putChunkCommands);
+        if (storedObjects.size() != drafts.size()) {
+            log.error("重建 chunk 异常: MinIO 返回数量不一致, draftCount={}, storedCount={}", drafts.size(), storedObjects.size());
+            throw new IllegalStateException("chunk 正文批量上传结果数量不一致。");
+        }
+        List<DocumentChunk> chunks = new ArrayList<>(drafts.size());
+        for (int index = 0; index < drafts.size(); index++) {
+            DocumentChunker.ChunkDraft draft = drafts.get(index);
+            ChunkObjectStorage.StoredChunkObject storedObject = storedObjects.get(index);
             LocalDateTime now = LocalDateTime.now();
             DocumentChunk chunk = new DocumentChunk(
                     null,
@@ -77,9 +87,9 @@ public class DocumentChunkService {
                     now,
                     now
             );
-            DocumentChunk savedChunk = documentChunkRepository.save(chunk);
-            savedChunks.add(savedChunk);
+            chunks.add(chunk);
         }
+        List<DocumentChunk> savedChunks = documentChunkRepository.saveBatch(chunks);
         log.info("重建 chunk 出参: knowledgeBaseId={}, fileId={}, strategy={}, chunkCount={}",
                 file.knowledgeBaseId(), file.id(), chunkConfig.chunkStrategy().logName(), savedChunks.size());
         return savedChunks;

@@ -15,6 +15,8 @@ import org.springframework.stereotype.Component;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 
 @Component
 public class MinioChunkEnrichmentObjectStorage implements ChunkEnrichmentObjectStorage {
@@ -38,23 +40,63 @@ public class MinioChunkEnrichmentObjectStorage implements ChunkEnrichmentObjectS
                 command.knowledgeBaseId(), command.fileId(), command.chunkId());
         try {
             ensureBucketExists();
-            byte[] bytes = command.content().getBytes(StandardCharsets.UTF_8);
-            String objectKey = buildObjectKey(command.knowledgeBaseId(), command.fileId(), command.chunkId());
-            ByteArrayInputStream inputStream = new ByteArrayInputStream(bytes);
-            PutObjectArgs putObjectArgs = PutObjectArgs.builder()
-                    .bucket(minioProperties.bucket())
-                    .object(objectKey)
-                    .contentType("text/plain; charset=utf-8")
-                    .stream(inputStream, bytes.length, -1)
-                    .build();
-            minioClient.putObject(putObjectArgs);
-            log.info("MinIO enrichment 上传出参: bucket={}, objectKey={}, bytes={}", minioProperties.bucket(), objectKey, bytes.length);
-            return new StoredEnrichmentObject(minioProperties.bucket(), objectKey);
+            StoredEnrichmentObject storedEnrichmentObject = uploadEmbeddingText(command);
+            log.info("MinIO enrichment 上传出参: bucket={}, objectKey={}",
+                    storedEnrichmentObject.bucket(), storedEnrichmentObject.objectKey());
+            return storedEnrichmentObject;
         } catch (Exception exception) {
             log.error("MinIO enrichment 上传异常: knowledgeBaseId={}, fileId={}, chunkId={}",
                     command.knowledgeBaseId(), command.fileId(), command.chunkId(), exception);
             throw new IllegalStateException("enrichment 增强文本上传到 MinIO 失败。", exception);
         }
+    }
+
+    @Override
+    public List<PutEmbeddingTextResult> putEmbeddingTexts(List<PutEmbeddingTextCommand> commands) {
+        log.info("MinIO enrichment 批量上传入参: count={}", commands.size());
+        if (commands.isEmpty()) {
+            log.info("MinIO enrichment 批量上传分支: 空列表");
+            return List.of();
+        }
+        List<PutEmbeddingTextResult> results = new ArrayList<>(commands.size());
+        try {
+            ensureBucketExists();
+        } catch (Exception exception) {
+            log.error("MinIO enrichment 批量上传异常: bucket 检查失败, count={}", commands.size(), exception);
+            for (PutEmbeddingTextCommand command : commands) {
+                results.add(new PutEmbeddingTextResult(command.chunkId(), false, null, "MinIO bucket 检查失败: " + exception.getMessage()));
+            }
+            return results;
+        }
+        for (PutEmbeddingTextCommand command : commands) {
+            try {
+                StoredEnrichmentObject storedEnrichmentObject = uploadEmbeddingText(command);
+                results.add(new PutEmbeddingTextResult(command.chunkId(), true, storedEnrichmentObject, null));
+            } catch (Exception exception) {
+                log.error("MinIO enrichment 单项上传异常: knowledgeBaseId={}, fileId={}, chunkId={}",
+                        command.knowledgeBaseId(), command.fileId(), command.chunkId(), exception);
+                results.add(new PutEmbeddingTextResult(command.chunkId(), false, null, exception.getMessage()));
+            }
+        }
+        long successCount = results.stream().filter(PutEmbeddingTextResult::success).count();
+        log.info("MinIO enrichment 批量上传出参: count={}, successCount={}, failedCount={}",
+                results.size(), successCount, results.size() - successCount);
+        return results;
+    }
+
+    private StoredEnrichmentObject uploadEmbeddingText(PutEmbeddingTextCommand command) throws Exception {
+        byte[] bytes = command.content().getBytes(StandardCharsets.UTF_8);
+        String objectKey = buildObjectKey(command.knowledgeBaseId(), command.fileId(), command.chunkId());
+        ByteArrayInputStream inputStream = new ByteArrayInputStream(bytes);
+        PutObjectArgs putObjectArgs = PutObjectArgs.builder()
+                .bucket(minioProperties.bucket())
+                .object(objectKey)
+                .contentType("text/plain; charset=utf-8")
+                .stream(inputStream, bytes.length, -1)
+                .build();
+        minioClient.putObject(putObjectArgs);
+        log.info("MinIO enrichment 单项上传完成: bucket={}, objectKey={}, bytes={}", minioProperties.bucket(), objectKey, bytes.length);
+        return new StoredEnrichmentObject(minioProperties.bucket(), objectKey);
     }
 
     @Override

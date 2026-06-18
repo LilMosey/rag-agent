@@ -15,6 +15,8 @@ import org.springframework.stereotype.Component;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 
 @Component
 public class MinioChunkObjectStorage implements ChunkObjectStorage {
@@ -38,23 +40,50 @@ public class MinioChunkObjectStorage implements ChunkObjectStorage {
                 command.knowledgeBaseId(), command.fileId(), command.chunkIndex(), command.contentHash());
         try {
             ensureBucketExists();
-            byte[] bytes = command.content().getBytes(StandardCharsets.UTF_8);
-            String objectKey = buildObjectKey(command.knowledgeBaseId(), command.fileId(), command.chunkIndex(), command.contentHash());
-            ByteArrayInputStream inputStream = new ByteArrayInputStream(bytes);
-            PutObjectArgs putObjectArgs = PutObjectArgs.builder()
-                    .bucket(minioProperties.bucket())
-                    .object(objectKey)
-                    .contentType("text/plain; charset=utf-8")
-                    .stream(inputStream, bytes.length, -1)
-                    .build();
-            minioClient.putObject(putObjectArgs);
-            log.info("MinIO chunk 上传出参: bucket={}, objectKey={}, bytes={}", minioProperties.bucket(), objectKey, bytes.length);
-            return new StoredChunkObject(minioProperties.bucket(), objectKey);
+            StoredChunkObject storedChunkObject = uploadChunk(command);
+            log.info("MinIO chunk 上传出参: bucket={}, objectKey={}", storedChunkObject.bucket(), storedChunkObject.objectKey());
+            return storedChunkObject;
         } catch (Exception exception) {
             log.error("MinIO chunk 上传异常: knowledgeBaseId={}, fileId={}, chunkIndex={}",
                     command.knowledgeBaseId(), command.fileId(), command.chunkIndex(), exception);
             throw new IllegalStateException("chunk 正文上传到 MinIO 失败。", exception);
         }
+    }
+
+    @Override
+    public List<StoredChunkObject> putChunks(List<PutChunkCommand> commands) {
+        log.info("MinIO chunk 批量上传入参: count={}", commands.size());
+        if (commands.isEmpty()) {
+            log.info("MinIO chunk 批量上传分支: 空列表");
+            return List.of();
+        }
+        try {
+            ensureBucketExists();
+            List<StoredChunkObject> storedObjects = new ArrayList<>(commands.size());
+            for (PutChunkCommand command : commands) {
+                storedObjects.add(uploadChunk(command));
+            }
+            log.info("MinIO chunk 批量上传出参: count={}", storedObjects.size());
+            return storedObjects;
+        } catch (Exception exception) {
+            log.error("MinIO chunk 批量上传异常: count={}", commands.size(), exception);
+            throw new IllegalStateException("chunk 正文批量上传到 MinIO 失败。", exception);
+        }
+    }
+
+    private StoredChunkObject uploadChunk(PutChunkCommand command) throws Exception {
+        byte[] bytes = command.content().getBytes(StandardCharsets.UTF_8);
+        String objectKey = buildObjectKey(command.knowledgeBaseId(), command.fileId(), command.chunkIndex(), command.contentHash());
+        ByteArrayInputStream inputStream = new ByteArrayInputStream(bytes);
+        PutObjectArgs putObjectArgs = PutObjectArgs.builder()
+                .bucket(minioProperties.bucket())
+                .object(objectKey)
+                .contentType("text/plain; charset=utf-8")
+                .stream(inputStream, bytes.length, -1)
+                .build();
+        minioClient.putObject(putObjectArgs);
+        log.info("MinIO chunk 单项上传完成: bucket={}, objectKey={}, bytes={}", minioProperties.bucket(), objectKey, bytes.length);
+        return new StoredChunkObject(minioProperties.bucket(), objectKey);
     }
 
     @Override

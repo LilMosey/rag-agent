@@ -14,7 +14,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class ChunkEnrichmentService {
 
@@ -43,22 +46,28 @@ public class ChunkEnrichmentService {
                 file.knowledgeBaseId(), file.id(), chunks.size());
         chunkEnrichmentObjectStorage.deleteEnrichmentsByFile(file.knowledgeBaseId(), file.id());
         chunkEnrichmentRepository.deleteByFileId(file.id());
-        int readyCount = 0;
-        int failedCount = 0;
+        List<ReadyEnrichmentDraft> readyDrafts = new ArrayList<>();
+        List<ChunkEnrichment> enrichments = new ArrayList<>();
         for (DocumentChunk chunk : chunks) {
             try {
-                rebuildOne(file, chunk);
-                readyCount++;
+                readyDrafts.add(buildReadyDraft(file, chunk));
             } catch (Exception exception) {
-                failedCount++;
-                saveFailed(file, chunk, exception);
+                enrichments.add(buildFailed(file, chunk, exception));
             }
         }
+        enrichments.addAll(buildUploadedEnrichments(file, readyDrafts));
+        List<ChunkEnrichment> savedEnrichments = chunkEnrichmentRepository.saveBatch(enrichments);
+        long readyCount = savedEnrichments.stream()
+                .filter(enrichment -> EnrichmentStatus.READY.equals(enrichment.status()))
+                .count();
+        long failedCount = savedEnrichments.stream()
+                .filter(enrichment -> EnrichmentStatus.FAILED.equals(enrichment.status()))
+                .count();
         log.info("重建 enrichment 出参: knowledgeBaseId={}, fileId={}, readyCount={}, failedCount={}",
                 file.knowledgeBaseId(), file.id(), readyCount, failedCount);
     }
 
-    private void rebuildOne(KnowledgeFile file, DocumentChunk chunk) {
+    private ReadyEnrichmentDraft buildReadyDraft(KnowledgeFile file, DocumentChunk chunk) {
         log.info("重建单个 enrichment 入参: fileId={}, chunkId={}, chunkIndex={}",
                 file.id(), chunk.id(), chunk.chunkIndex());
         String chunkContent = chunkContentStorage.getChunkContent(chunk.storageBucket(), chunk.storageObjectKey());
@@ -72,23 +81,58 @@ public class ChunkEnrichmentService {
         ));
         String questionsJson = toQuestionsJson(result.questions());
         String embeddingText = buildEmbeddingText(chunk.titlePath(), result.summary(), result.questions(), chunkContent);
-        ChunkEnrichmentObjectStorage.StoredEnrichmentObject storedObject = chunkEnrichmentObjectStorage.putEmbeddingText(
-                new ChunkEnrichmentObjectStorage.PutEmbeddingTextCommand(
-                        file.knowledgeBaseId(),
-                        file.id(),
-                        chunk.id(),
-                        embeddingText
-                )
-        );
+        log.info("重建单个 enrichment 生成完成: fileId={}, chunkId={}", file.id(), chunk.id());
+        return new ReadyEnrichmentDraft(chunk, result, questionsJson, embeddingText);
+    }
+
+    private List<ChunkEnrichment> buildUploadedEnrichments(KnowledgeFile file, List<ReadyEnrichmentDraft> readyDrafts) {
+        if (readyDrafts.isEmpty()) {
+            log.info("批量上传 enrichment 分支: 无 READY draft");
+            return List.of();
+        }
+        List<ChunkEnrichmentObjectStorage.PutEmbeddingTextCommand> commands = new ArrayList<>(readyDrafts.size());
+        for (ReadyEnrichmentDraft readyDraft : readyDrafts) {
+            commands.add(new ChunkEnrichmentObjectStorage.PutEmbeddingTextCommand(
+                    file.knowledgeBaseId(),
+                    file.id(),
+                    readyDraft.chunk().id(),
+                    readyDraft.embeddingText()
+            ));
+        }
+        List<ChunkEnrichmentObjectStorage.PutEmbeddingTextResult> uploadResults = chunkEnrichmentObjectStorage.putEmbeddingTexts(commands);
+        Map<Long, ChunkEnrichmentObjectStorage.PutEmbeddingTextResult> uploadResultMap = new HashMap<>();
+        for (ChunkEnrichmentObjectStorage.PutEmbeddingTextResult uploadResult : uploadResults) {
+            uploadResultMap.put(uploadResult.chunkId(), uploadResult);
+        }
+        List<ChunkEnrichment> enrichments = new ArrayList<>(readyDrafts.size());
+        for (ReadyEnrichmentDraft readyDraft : readyDrafts) {
+            ChunkEnrichmentObjectStorage.PutEmbeddingTextResult uploadResult = uploadResultMap.get(readyDraft.chunk().id());
+            if (uploadResult == null) {
+                enrichments.add(buildFailed(file, readyDraft.chunk(), new IllegalStateException("MinIO enrichment 批量上传结果缺失。")));
+            } else if (uploadResult.success()) {
+                enrichments.add(buildReady(file, readyDraft, uploadResult.storedObject()));
+            } else {
+                enrichments.add(buildFailed(file, readyDraft.chunk(), new IllegalStateException(uploadResult.errorMessage())));
+            }
+        }
+        return enrichments;
+    }
+
+    private ChunkEnrichment buildReady(
+            KnowledgeFile file,
+            ReadyEnrichmentDraft readyDraft,
+            ChunkEnrichmentObjectStorage.StoredEnrichmentObject storedObject
+    ) {
+        ChunkEnrichmentGenerator.GenerateResult result = readyDraft.result();
         LocalDateTime now = LocalDateTime.now();
         ChunkEnrichment enrichment = new ChunkEnrichment(
                 null,
                 file.knowledgeBaseId(),
                 file.id(),
-                chunk.id(),
+                readyDraft.chunk().id(),
                 EnrichmentStrategy.HYBRID_TEXT,
                 result.summary(),
-                questionsJson,
+                readyDraft.questionsJson(),
                 storedObject.bucket(),
                 storedObject.objectKey(),
                 result.llmProvider(),
@@ -99,11 +143,12 @@ public class ChunkEnrichmentService {
                 now,
                 now
         );
-        chunkEnrichmentRepository.save(enrichment);
-        log.info("重建单个 enrichment 出参: fileId={}, chunkId={}, status={}", file.id(), chunk.id(), EnrichmentStatus.READY);
+        log.info("构建 READY enrichment 出参: fileId={}, chunkId={}, status={}",
+                file.id(), readyDraft.chunk().id(), EnrichmentStatus.READY);
+        return enrichment;
     }
 
-    private void saveFailed(KnowledgeFile file, DocumentChunk chunk, Exception exception) {
+    private ChunkEnrichment buildFailed(KnowledgeFile file, DocumentChunk chunk, Exception exception) {
         String errorMessage = truncateErrorMessage(exception.getMessage());
         log.error("重建单个 enrichment 异常: fileId={}, chunkId={}, errorMessage={}",
                 file.id(), chunk.id(), errorMessage, exception);
@@ -126,7 +171,7 @@ public class ChunkEnrichmentService {
                 now,
                 now
         );
-        chunkEnrichmentRepository.save(enrichment);
+        return enrichment;
     }
 
     private String buildEmbeddingText(
@@ -184,5 +229,13 @@ public class ChunkEnrichmentService {
             return message;
         }
         return message.substring(0, MAX_ERROR_MESSAGE_LENGTH);
+    }
+
+    private record ReadyEnrichmentDraft(
+            DocumentChunk chunk,
+            ChunkEnrichmentGenerator.GenerateResult result,
+            String questionsJson,
+            String embeddingText
+    ) {
     }
 }
