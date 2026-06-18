@@ -2,7 +2,7 @@ import { Button, Popconfirm, Space, Table, Tag } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { Download, Info, Trash2 } from 'lucide-react';
-import type { KnowledgeFile } from '../types/domain';
+import type { ChunkStrategy, KnowledgeFile } from '../types/domain';
 import { formatFileSize, statusColor } from './FileDetailDrawer';
 
 interface FileTableProps {
@@ -36,6 +36,22 @@ export function FileTable({ files, loading, onDetail, onDownload, onDelete }: Fi
       dataIndex: 'fileStatus',
       width: 140,
       render: (status: string) => <Tag color={statusColor(status)}>{status}</Tag>
+    },
+    {
+      title: '分块方式',
+      dataIndex: 'chunkStrategy',
+      width: 120,
+      render: (strategy: ChunkStrategy) => chunkStrategyLabel(strategy)
+    },
+    {
+      title: '块大小',
+      dataIndex: 'chunkSize',
+      width: 100
+    },
+    {
+      title: '重叠',
+      dataIndex: 'chunkOverlap',
+      width: 90
     },
     {
       title: '上传时间',
@@ -72,7 +88,18 @@ export function FileTable({ files, loading, onDetail, onDownload, onDelete }: Fi
       dataSource={files}
       loading={loading}
       pagination={false}
+      scroll={{ x: 1120 }}
       locale={{ emptyText: '暂无文件' }}
     />
   );
+}
+
+function chunkStrategyLabel(strategy: ChunkStrategy): string {
+  if (strategy === 'FIXED_SIZE') {
+    return '固定大小';
+  }
+  if (strategy === 'SECTION') {
+    return '按章节';
+  }
+  return '递归切分';
 }

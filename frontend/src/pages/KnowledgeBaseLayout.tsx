@@ -1,6 +1,6 @@
-import { Button, Empty, Input, InputNumber, Layout, List, message, Popconfirm, Select, Space, Typography, Upload } from 'antd';
-import type { UploadProps } from 'antd';
-import { Edit3, Plus, Search, Trash2, UploadCloud } from 'lucide-react';
+import { Button, Empty, Input, InputNumber, Layout, List, message, Modal, Popconfirm, Select, Space, Typography, Upload } from 'antd';
+import type { UploadFile, UploadProps } from 'antd';
+import { Edit3, Plus, Search, Trash2, UploadCloud, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import {
   createKnowledgeBase,
@@ -31,7 +31,12 @@ export function KnowledgeBaseLayout() {
   const [modalSubmitting, setModalSubmitting] = useState(false);
   const [keyword, setKeyword] = useState('');
   const [status, setStatus] = useState<FileStatus | ''>('');
+  const [appliedKeyword, setAppliedKeyword] = useState('');
+  const [appliedStatus, setAppliedStatus] = useState<FileStatus | ''>('');
   const [detailFile, setDetailFile] = useState<KnowledgeFile>();
+  const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const [uploadSubmitting, setUploadSubmitting] = useState(false);
+  const [selectedUploadFiles, setSelectedUploadFiles] = useState<UploadFile[]>([]);
   const [chunkStrategy, setChunkStrategy] = useState<ChunkStrategy>('RECURSIVE');
   const [chunkSize, setChunkSize] = useState(1000);
   const [chunkOverlap, setChunkOverlap] = useState(150);
@@ -47,11 +52,11 @@ export function KnowledgeBaseLayout() {
 
   useEffect(() => {
     if (selectedKnowledgeBaseId) {
-      void loadFiles(selectedKnowledgeBaseId, keyword, status);
+      void loadFiles(selectedKnowledgeBaseId, appliedKeyword, appliedStatus);
     } else {
       setFiles([]);
     }
-  }, [selectedKnowledgeBaseId, keyword, status]);
+  }, [selectedKnowledgeBaseId]);
 
   async function loadKnowledgeBases() {
     setKnowledgeBaseLoading(true);
@@ -128,17 +133,45 @@ export function KnowledgeBaseLayout() {
   }
 
   const uploadProps: UploadProps = {
-    showUploadList: false,
+    fileList: selectedUploadFiles,
     maxCount: 1,
+    showUploadList: false,
     beforeUpload: (file) => {
-      void handleUpload(file);
+      if (!isAllowedFile(file.name)) {
+        messageApi.error(toUnsupportedFileMessage(file.name));
+        return Upload.LIST_IGNORE;
+      }
+      setSelectedUploadFiles([
+        {
+          uid: file.uid,
+          name: file.name,
+          status: 'done',
+          originFileObj: file
+        }
+      ]);
       return false;
+    },
+    onRemove: () => {
+      setSelectedUploadFiles([]);
     }
   };
 
-  async function handleUpload(file: File) {
+  function openUploadModal() {
+    setSelectedUploadFiles([]);
+    setChunkStrategy('RECURSIVE');
+    setChunkSize(1000);
+    setChunkOverlap(150);
+    setUploadModalOpen(true);
+  }
+
+  async function handleUpload() {
     if (!selectedKnowledgeBaseId) {
       messageApi.warning('请先选择知识库');
+      return;
+    }
+    const file = selectedUploadFiles[0]?.originFileObj;
+    if (!file) {
+      messageApi.warning('请选择文件');
       return;
     }
     if (!isAllowedFile(file.name)) {
@@ -150,6 +183,7 @@ export function KnowledgeBaseLayout() {
       messageApi.error(validationMessage);
       return;
     }
+    setUploadSubmitting(true);
     try {
       await uploadFile(selectedKnowledgeBaseId, file, {
         chunkStrategy,
@@ -157,9 +191,13 @@ export function KnowledgeBaseLayout() {
         chunkOverlap
       });
       messageApi.success('文件已上传');
-      await loadFiles(selectedKnowledgeBaseId, keyword, status);
+      setUploadModalOpen(false);
+      setSelectedUploadFiles([]);
+      await loadFiles(selectedKnowledgeBaseId, appliedKeyword, appliedStatus);
     } catch (error) {
       messageApi.error(toErrorMessage(error));
+    } finally {
+      setUploadSubmitting(false);
     }
   }
 
@@ -188,10 +226,19 @@ export function KnowledgeBaseLayout() {
       if (detailFile?.id === file.id) {
         setDetailFile(undefined);
       }
-      await loadFiles(knowledgeBaseId, keyword, status);
+      await loadFiles(knowledgeBaseId, appliedKeyword, appliedStatus);
     } catch (error) {
       messageApi.error(toErrorMessage(error));
     }
+  }
+
+  async function handleSearchFiles() {
+    if (!selectedKnowledgeBaseId) {
+      return;
+    }
+    setAppliedKeyword(keyword);
+    setAppliedStatus(status);
+    await loadFiles(selectedKnowledgeBaseId, keyword, status);
   }
 
   return (
@@ -264,42 +311,14 @@ export function KnowledgeBaseLayout() {
             <Typography.Text type="secondary">{selectedKnowledgeBase?.description || '创建或选择知识库后管理文件'}</Typography.Text>
           </div>
           <Space align="center" wrap>
-            <Select<ChunkStrategy>
-              value={chunkStrategy}
-              onChange={setChunkStrategy}
+            <Button
+              type="primary"
+              icon={<UploadCloud size={16} />}
               disabled={!selectedKnowledgeBaseId}
-              style={{ width: 132 }}
-              options={[
-                { label: '递归切分', value: 'RECURSIVE' },
-                { label: '固定大小', value: 'FIXED_SIZE' },
-                { label: '按章节', value: 'SECTION' }
-              ]}
-            />
-            <InputNumber
-              value={chunkSize}
-              min={200}
-              max={4000}
-              step={100}
-              addonBefore="块大小"
-              disabled={!selectedKnowledgeBaseId}
-              style={{ width: 150 }}
-              onChange={(value) => setChunkSize(value ?? 0)}
-            />
-            <InputNumber
-              value={chunkOverlap}
-              min={0}
-              max={1000}
-              step={50}
-              addonBefore="重叠"
-              disabled={!selectedKnowledgeBaseId}
-              style={{ width: 140 }}
-              onChange={(value) => setChunkOverlap(value ?? 0)}
-            />
-            <Upload {...uploadProps} disabled={!selectedKnowledgeBaseId}>
-              <Button type="primary" icon={<UploadCloud size={16} />} disabled={!selectedKnowledgeBaseId}>
-                上传文件
-              </Button>
-            </Upload>
+              onClick={openUploadModal}
+            >
+              上传文件
+            </Button>
           </Space>
         </Header>
         <Content className="app-content">
@@ -327,6 +346,14 @@ export function KnowledgeBaseLayout() {
                     { label: 'DISABLED', value: 'DISABLED' }
                   ]}
                 />
+                <Button
+                  type="primary"
+                  icon={<Search size={16} />}
+                  loading={fileLoading}
+                  onClick={() => void handleSearchFiles()}
+                >
+                  查询
+                </Button>
               </div>
               <FileTable
                 files={files}
@@ -353,6 +380,75 @@ export function KnowledgeBaseLayout() {
         }}
         onSubmit={handleSaveKnowledgeBase}
       />
+      <Modal
+        title="上传文件"
+        open={uploadModalOpen}
+        okText="上传"
+        cancelText="取消"
+        confirmLoading={uploadSubmitting}
+        okButtonProps={{ disabled: selectedUploadFiles.length === 0 }}
+        onOk={() => void handleUpload()}
+        onCancel={() => {
+          if (!uploadSubmitting) {
+            setUploadModalOpen(false);
+            setSelectedUploadFiles([]);
+          }
+        }}
+      >
+        <div className="upload-modal-content">
+          <Upload.Dragger {...uploadProps} disabled={uploadSubmitting}>
+            <p className="ant-upload-drag-icon">
+              <UploadCloud size={28} />
+            </p>
+            <p className="ant-upload-text">选择或拖入文件</p>
+          </Upload.Dragger>
+          {selectedUploadFiles.length > 0 ? (
+            <div className="selected-upload-file">
+              <span className="selected-upload-file-name" title={selectedUploadFiles[0].name}>
+                {selectedUploadFiles[0].name}
+              </span>
+              <Button
+                danger
+                type="text"
+                size="small"
+                icon={<X size={15} />}
+                disabled={uploadSubmitting}
+                onClick={() => setSelectedUploadFiles([])}
+              />
+            </div>
+          ) : null}
+          <div className="upload-options">
+            <Select<ChunkStrategy>
+              value={chunkStrategy}
+              onChange={setChunkStrategy}
+              disabled={uploadSubmitting}
+              options={[
+                { label: '递归切分', value: 'RECURSIVE' },
+                { label: '固定大小', value: 'FIXED_SIZE' },
+                { label: '按章节', value: 'SECTION' }
+              ]}
+            />
+            <InputNumber
+              value={chunkSize}
+              min={200}
+              max={4000}
+              step={100}
+              addonBefore="块大小"
+              disabled={uploadSubmitting}
+              onChange={(value) => setChunkSize(value ?? 0)}
+            />
+            <InputNumber
+              value={chunkOverlap}
+              min={0}
+              max={1000}
+              step={50}
+              addonBefore="重叠"
+              disabled={uploadSubmitting}
+              onChange={(value) => setChunkOverlap(value ?? 0)}
+            />
+          </div>
+        </div>
+      </Modal>
       <FileDetailDrawer open={Boolean(detailFile)} file={detailFile} onClose={() => setDetailFile(undefined)} />
     </Layout>
   );
