@@ -25,6 +25,7 @@
         <poi.version>5.4.1</poi.version>
         <agentscope.version>2.0.0-RC3</agentscope.version>
         <dashscope.version>2.22.22</dashscope.version>
+        <milvus.version>2.6.17</milvus.version>
         <maven.compiler.release>${java.version}</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>

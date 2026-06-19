@@ -11,4 +11,6 @@ public interface ChunkEnrichmentRepository {
     ChunkEnrichment save(ChunkEnrichment chunkEnrichment);
 
     List<ChunkEnrichment> saveBatch(List<ChunkEnrichment> chunkEnrichments);
+
+    List<ChunkEnrichment> findByFileId(Long fileId);
 }

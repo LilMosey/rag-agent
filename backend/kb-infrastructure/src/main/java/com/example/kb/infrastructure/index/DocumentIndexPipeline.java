@@ -12,6 +12,7 @@ import com.example.kb.domain.model.DocumentChunk;
 import com.example.kb.domain.model.KnowledgeFile;
 import com.example.kb.domain.model.KnowledgeFileIndexTask;
 import com.example.kb.domain.model.ParsedDocument;
+import com.example.kb.application.service.ChunkEmbeddingService;
 import com.example.kb.application.service.ChunkEnrichmentService;
 import com.example.kb.application.service.DocumentChunkService;
 import org.slf4j.Logger;
@@ -34,6 +35,7 @@ public class DocumentIndexPipeline implements IndexPipeline {
     private final DocumentCleaner documentCleaner;
     private final DocumentChunkService documentChunkService;
     private final ChunkEnrichmentService chunkEnrichmentService;
+    private final ChunkEmbeddingService chunkEmbeddingService;
 
     public DocumentIndexPipeline(
             KnowledgeFileRepository fileRepository,
@@ -41,7 +43,8 @@ public class DocumentIndexPipeline implements IndexPipeline {
             DocumentParserRegistry parserRegistry,
             DocumentCleaner documentCleaner,
             DocumentChunkService documentChunkService,
-            ChunkEnrichmentService chunkEnrichmentService
+            ChunkEnrichmentService chunkEnrichmentService,
+            ChunkEmbeddingService chunkEmbeddingService
     ) {
         this.fileRepository = fileRepository;
         this.objectStorage = objectStorage;
@@ -49,6 +52,7 @@ public class DocumentIndexPipeline implements IndexPipeline {
         this.documentCleaner = documentCleaner;
         this.documentChunkService = documentChunkService;
         this.chunkEnrichmentService = chunkEnrichmentService;
+        this.chunkEmbeddingService = chunkEmbeddingService;
     }
 
     @Override
@@ -79,8 +83,9 @@ public class DocumentIndexPipeline implements IndexPipeline {
                 List<DocumentChunk> chunks = documentChunkService.rebuildChunks(file, cleanedDocument);
                 int chunkCount = chunks.size();
                 chunkEnrichmentService.rebuildEnrichments(file, chunks);
+                chunkEmbeddingService.rebuildEmbeddings(file, chunks);
                 fileRepository.updateParseStatus(file.knowledgeBaseId(), file.id(), FileStatus.READY, null, LocalDateTime.now());
-                String message = "文档解析、清洗、chunk 和 enrichment 处理完成，sectionCount=" + sectionCount + ", chunkCount=" + chunkCount;
+                String message = "文档解析、清洗、chunk、enrichment 和 embedding 处理完成，sectionCount=" + sectionCount + ", chunkCount=" + chunkCount;
                 log.info("索引 Pipeline 出参: taskId={}, fileId={}, title={}, sectionCount={}, chunkCount={}, status=SUCCESS",
                         task.id(), file.id(), cleanedDocument.title(), sectionCount, chunkCount);
                 return IndexPipeline.IndexPipelineResult.success(message);

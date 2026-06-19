@@ -7,17 +7,22 @@ import com.example.kb.application.port.ChunkEnrichmentRepository;
 import com.example.kb.application.port.ChunkObjectStorage;
 import com.example.kb.application.port.DocumentChunkRepository;
 import com.example.kb.application.port.DocumentChunker;
+import com.example.kb.application.port.EmbeddingGenerator;
 import com.example.kb.application.port.IndexPipeline;
 import com.example.kb.application.port.KnowledgeBaseRepository;
 import com.example.kb.application.port.KnowledgeFileRepository;
 import com.example.kb.application.port.KnowledgeFileIndexTaskRepository;
 import com.example.kb.application.port.ObjectStorage;
 import com.example.kb.application.port.VectorIndexCleaner;
+import com.example.kb.application.port.VectorIndexWriter;
 import com.example.kb.application.service.ChunkEnrichmentService;
+import com.example.kb.application.service.ChunkEmbeddingService;
 import com.example.kb.application.service.KnowledgeBaseService;
 import com.example.kb.application.service.DocumentChunkService;
 import com.example.kb.application.service.KnowledgeFileIndexTaskService;
 import com.example.kb.application.service.KnowledgeFileService;
+import com.example.kb.infrastructure.embedding.DashScopeEmbeddingGenerator;
+import com.example.kb.infrastructure.embedding.EmbeddingProperties;
 import com.example.kb.infrastructure.enrichment.AgentScopeChunkEnrichmentGenerator;
 import com.example.kb.infrastructure.enrichment.ChunkEnrichmentProperties;
 import com.example.kb.infrastructure.enrichment.ChunkEnrichmentPromptBuilder;
@@ -109,6 +114,33 @@ public class ApplicationServiceConfiguration {
                 chunkEnrichmentGenerator,
                 chunkEnrichmentObjectStorage,
                 chunkEnrichmentRepository
+        );
+    }
+
+    @Bean
+    public EmbeddingGenerator embeddingGenerator(EmbeddingProperties properties) {
+        if (!properties.enabled()) {
+            log.warn("Embedding 生成器分支: embedding 未启用，但第一版索引流程需要向量，仍创建 DashScope 生成器");
+        }
+        log.info("Embedding 生成器分支: 使用 DashScope, provider={}, model={}",
+                properties.provider(), properties.model());
+        return new DashScopeEmbeddingGenerator(properties);
+    }
+
+    @Bean
+    public ChunkEmbeddingService chunkEmbeddingService(
+            ChunkContentStorage chunkContentStorage,
+            ChunkEnrichmentRepository chunkEnrichmentRepository,
+            EmbeddingGenerator embeddingGenerator,
+            VectorIndexWriter vectorIndexWriter,
+            EmbeddingProperties embeddingProperties
+    ) {
+        return new ChunkEmbeddingService(
+                chunkContentStorage,
+                chunkEnrichmentRepository,
+                embeddingGenerator,
+                vectorIndexWriter,
+                embeddingProperties.batchSize()
         );
     }
 }

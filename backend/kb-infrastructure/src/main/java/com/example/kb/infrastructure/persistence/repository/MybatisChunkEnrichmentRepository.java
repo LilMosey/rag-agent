@@ -74,6 +74,18 @@ public class MybatisChunkEnrichmentRepository implements ChunkEnrichmentReposito
         return savedEnrichments;
     }
 
+    @Override
+    public List<ChunkEnrichment> findByFileId(Long fileId) {
+        log.info("查询 enrichment 元数据入参: fileId={}", fileId);
+        LambdaQueryWrapper<ChunkEnrichmentEntity> wrapper = new LambdaQueryWrapper<ChunkEnrichmentEntity>()
+                .eq(ChunkEnrichmentEntity::getFileId, fileId);
+        List<ChunkEnrichment> enrichments = chunkEnrichmentMapper.selectList(wrapper).stream()
+                .map(this::toDomain)
+                .toList();
+        log.info("查询 enrichment 元数据出参: fileId={}, count={}", fileId, enrichments.size());
+        return enrichments;
+    }
+
     private ChunkEnrichment toDomain(ChunkEnrichmentEntity entity) {
         return new ChunkEnrichment(
                 entity.getId(),
