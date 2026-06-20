@@ -576,6 +576,7 @@ npm run build
 
 ## 效果展示
 <img width="3016" height="1430" alt="b4a1573ef1b4bc6ab99a2eef9f1388d7" src="https://github.com/user-attachments/assets/dc6c0df4-04e0-4be3-a729-836fd5d3c7b9" />
-<img width="3022" height="1470" alt="ea344c4e4f02b721e23c5dcb0e8b8232" src="https://github.com/user-attachments/assets/7fbdfb0e-21b4-4898-b9b9-1338a7da0d0f" />
+<img width="3004" height="1304" alt="image" src="https://github.com/user-attachments/assets/929a3260-e040-4b08-b34b-502c93c0cc9f" />
+
 
 
