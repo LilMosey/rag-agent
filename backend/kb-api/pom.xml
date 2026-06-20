@@ -6,7 +6,7 @@
 
     <parent>
         <groupId>com.example</groupId>
-        <artifactId>enterprise-kb</artifactId>
+        <artifactId>rag-agent</artifactId>
         <version>0.1.0-SNAPSHOT</version>
     </parent>
 

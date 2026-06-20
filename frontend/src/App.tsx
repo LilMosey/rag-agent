@@ -47,7 +47,7 @@ export default function App() {
     >
       <div className="product-frame">
         <div className="product-topbar">
-          <div className="product-name">Enterprise KB</div>
+          <div className="product-name">RAG Agent</div>
           <div className="product-subtitle">知识库管理与 RAG 对话</div>
         </div>
         <Tabs

@@ -1,6 +1,6 @@
-# Enterprise KB 企业知识库 RAG 系统
+# RAG Agent 企业知识库 RAG 系统
 
-Enterprise KB 是一个企业知识库管理与 RAG 对话 Demo 项目。它的目标是把企业内部文档上传、解析、切分、增强、向量化、检索和问答串成一条完整链路，为后续 Agent 应用预留扩展空间。
+RAG Agent 是一个企业知识库管理与 RAG 对话 Demo 项目。它的目标是把企业内部文档上传、解析、切分、增强、向量化、检索和问答串成一条完整链路，为后续 Agent 应用预留扩展空间。
 
 当前版本重点覆盖两块能力：
 
@@ -577,6 +577,5 @@ npm run build
 ## 效果展示
 <img width="3016" height="1430" alt="b4a1573ef1b4bc6ab99a2eef9f1388d7" src="https://github.com/user-attachments/assets/dc6c0df4-04e0-4be3-a729-836fd5d3c7b9" />
 <img width="3022" height="1470" alt="ea344c4e4f02b721e23c5dcb0e8b8232" src="https://github.com/user-attachments/assets/7fbdfb0e-21b4-4898-b9b9-1338a7da0d0f" />
-
 
 
