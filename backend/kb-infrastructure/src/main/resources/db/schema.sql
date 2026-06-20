@@ -146,3 +146,33 @@ CREATE TABLE IF NOT EXISTS conversation_retrieval_reference (
     KEY idx_reference_chunk_id (chunk_id),
     KEY idx_reference_file_id (file_id)
 );
+
+CREATE TABLE IF NOT EXISTS conversation_retrieval_task (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    conversation_retrieval_id BIGINT NOT NULL,
+    task_type VARCHAR(64) NOT NULL,
+    query_text TEXT NOT NULL,
+    status VARCHAR(64) NOT NULL,
+    error_message VARCHAR(2048) NULL,
+    started_at DATETIME(6) NULL,
+    finished_at DATETIME(6) NULL,
+    created_at DATETIME(6) NOT NULL,
+    updated_at DATETIME(6) NOT NULL,
+    KEY idx_retrieval_task_retrieval_id (conversation_retrieval_id),
+    KEY idx_retrieval_task_status (status)
+);
+
+CREATE TABLE IF NOT EXISTS conversation_retrieval_task_hit (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    retrieval_task_id BIGINT NOT NULL,
+    knowledge_base_id BIGINT NOT NULL,
+    file_id BIGINT NOT NULL,
+    chunk_id BIGINT NOT NULL,
+    chunk_index INT NOT NULL,
+    score DECIMAL(10, 6) NOT NULL DEFAULT 0,
+    rank_no INT NOT NULL,
+    created_at DATETIME(6) NOT NULL,
+    KEY idx_task_hit_task_id (retrieval_task_id),
+    KEY idx_task_hit_chunk_id (chunk_id),
+    KEY idx_task_hit_file_id (file_id)
+);

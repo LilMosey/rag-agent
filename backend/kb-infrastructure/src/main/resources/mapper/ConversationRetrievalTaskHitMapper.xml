@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.kb.infrastructure.persistence.mapper.ConversationRetrievalTaskHitMapper">
+    <insert id="insertBatch" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO conversation_retrieval_task_hit (
+            retrieval_task_id,
+            knowledge_base_id,
+            file_id,
+            chunk_id,
+            chunk_index,
+            score,
+            rank_no,
+            created_at
+        )
+        VALUES
+        <foreach collection="entities" item="item" separator=",">
+            (
+                #{item.retrievalTaskId},
+                #{item.knowledgeBaseId},
+                #{item.fileId},
+                #{item.chunkId},
+                #{item.chunkIndex},
+                #{item.score},
+                #{item.rankNo},
+                #{item.createdAt}
+            )
+        </foreach>
+    </insert>
+</mapper>

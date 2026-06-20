@@ -6,6 +6,13 @@ public interface RagAnswerGenerator {
 
     AnswerResult generate(AnswerCommand command);
 
+    AnswerResult generateStream(AnswerCommand command, AnswerDeltaConsumer answerDeltaConsumer);
+
+    interface AnswerDeltaConsumer {
+
+        void onDelta(String delta);
+    }
+
     record AnswerCommand(
             String userQuestion,
             List<ReferenceContext> references

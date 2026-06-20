@@ -9,6 +9,8 @@ import com.example.kb.domain.model.ConversationMessage;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -17,8 +19,11 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.io.IOException;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
 
 @RestController
 @RequestMapping("/api/conversations")
@@ -28,10 +33,16 @@ public class ConversationController {
 
     private final ConversationService conversationService;
     private final RagChatService ragChatService;
+    private final ExecutorService ragSseExecutorService;
 
-    public ConversationController(ConversationService conversationService, RagChatService ragChatService) {
+    public ConversationController(
+            ConversationService conversationService,
+            RagChatService ragChatService,
+            @Qualifier("ragSseExecutorService") ExecutorService ragSseExecutorService
+    ) {
         this.conversationService = conversationService;
         this.ragChatService = ragChatService;
+        this.ragSseExecutorService = ragSseExecutorService;
     }
 
     @PostMapping
@@ -97,5 +108,40 @@ public class ConversationController {
         log.info("发送会话消息接口出参: conversationId={}, messageId={}, referenceCount={}",
                 conversationId, response.messageId(), response.references().size());
         return ApiResponse.ok(response);
+    }
+
+    @PostMapping(value = "/{conversationId}/messages/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter sendMessageStream(
+            @PathVariable("conversationId") Long conversationId,
+            @Valid @RequestBody ConversationDtos.SendMessageRequest request
+    ) {
+        log.info("流式发送会话消息接口入参: conversationId={}, contentLength={}",
+                conversationId, request.content().length());
+        SseEmitter emitter = new SseEmitter(0L);
+        ragSseExecutorService.execute(() -> {
+            try {
+                ragChatService.sendMessageStream(conversationId, request.content(), (eventName, data) -> {
+                    try {
+                        emitter.send(SseEmitter.event().name(eventName).data(data));
+                    } catch (IOException ioException) {
+                        log.error("发送 SSE 事件异常: conversationId={}, eventName={}", conversationId, eventName, ioException);
+                        throw new IllegalStateException("发送 SSE 事件失败: " + ioException.getMessage(), ioException);
+                    }
+                });
+                emitter.complete();
+                log.info("流式发送会话消息接口出参: conversationId={}, completed=true", conversationId);
+            } catch (Exception exception) {
+                log.error("流式发送会话消息接口异常: conversationId={}", conversationId, exception);
+                try {
+                    emitter.send(SseEmitter.event().name("error").data(
+                            new ConversationDtos.StreamErrorResponse(exception.getMessage())
+                    ));
+                } catch (IOException ioException) {
+                    log.error("发送 SSE 错误事件异常: conversationId={}", conversationId, ioException);
+                }
+                emitter.completeWithError(exception);
+            }
+        });
+        return emitter;
     }
 }

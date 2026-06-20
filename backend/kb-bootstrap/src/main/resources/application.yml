@@ -69,3 +69,18 @@ rag:
     router-confidence-threshold: 0.6
     retrieval-top-k: 10
     context-top-k: 5
+  retrieval:
+    query-rewrite-enabled: true
+    hyde-enabled: true
+    multi-query-enabled: true
+    bm25-enabled: false
+    query-rewrite-history-message-limit: 6
+    multi-query-count: 3
+    dense-top-k: 10
+    bm25-top-k: 10
+    fusion-top-k: 10
+    context-top-k: 5
+    rrf-k: 60
+    executor-core-size: 4
+    executor-max-size: 8
+    executor-queue-capacity: 100

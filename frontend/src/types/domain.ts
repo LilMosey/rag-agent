@@ -88,3 +88,20 @@ export interface SendMessageResponse {
   router: RouterResult;
   references: RetrievalReference[];
 }
+
+export interface RetrievalDoneEvent {
+  referenceCount: number;
+}
+
+export interface AnswerDeltaEvent {
+  delta: string;
+}
+
+export interface AnswerDoneEvent {
+  messageId: number;
+  content: string;
+}
+
+export interface StreamErrorEvent {
+  message: string;
+}

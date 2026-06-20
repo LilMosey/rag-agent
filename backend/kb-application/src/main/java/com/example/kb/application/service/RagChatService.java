@@ -6,7 +6,6 @@ import com.example.kb.application.port.ConversationRepository;
 import com.example.kb.application.port.ConversationRetrievalReferenceRepository;
 import com.example.kb.application.port.ConversationRetrievalRepository;
 import com.example.kb.application.port.DocumentChunkRepository;
-import com.example.kb.application.port.EmbeddingGenerator;
 import com.example.kb.application.port.KnowledgeBaseRepository;
 import com.example.kb.application.port.KnowledgeFileRepository;
 import com.example.kb.application.port.RagAnswerGenerator;
@@ -44,10 +43,8 @@ public class RagChatService {
     private final DocumentChunkRepository documentChunkRepository;
     private final ChunkContentStorage chunkContentStorage;
     private final RagRouter ragRouter;
-    private final EmbeddingGenerator embeddingGenerator;
-    private final VectorIndexSearcher vectorIndexSearcher;
+    private final RagRetrievalService ragRetrievalService;
     private final RagAnswerGenerator ragAnswerGenerator;
-    private final int retrievalTopK;
     private final int contextTopK;
 
     public RagChatService(
@@ -60,10 +57,8 @@ public class RagChatService {
             DocumentChunkRepository documentChunkRepository,
             ChunkContentStorage chunkContentStorage,
             RagRouter ragRouter,
-            EmbeddingGenerator embeddingGenerator,
-            VectorIndexSearcher vectorIndexSearcher,
+            RagRetrievalService ragRetrievalService,
             RagAnswerGenerator ragAnswerGenerator,
-            int retrievalTopK,
             int contextTopK
     ) {
         this.conversationRepository = conversationRepository;
@@ -75,10 +70,8 @@ public class RagChatService {
         this.documentChunkRepository = documentChunkRepository;
         this.chunkContentStorage = chunkContentStorage;
         this.ragRouter = ragRouter;
-        this.embeddingGenerator = embeddingGenerator;
-        this.vectorIndexSearcher = vectorIndexSearcher;
+        this.ragRetrievalService = ragRetrievalService;
         this.ragAnswerGenerator = ragAnswerGenerator;
-        this.retrievalTopK = retrievalTopK;
         this.contextTopK = contextTopK;
     }
 
@@ -90,6 +83,7 @@ public class RagChatService {
         RagRouter.RouteResult routeResult = route(content, knowledgeBases);
         RagRouter.RouteResult normalizedRouteResult = normalizeRouteResult(routeResult);
         List<ReferenceCandidate> referenceCandidates = List.of();
+        List<RagRetrievalService.RetrievalTaskReport> retrievalTaskReports = List.of();
         String answerContent;
         if (normalizedRouteResult.action() == RagRouterAction.NO_KB) {
             log.info("发送 RAG 会话消息分支: NO_KB, conversationId={}", conversationId);
@@ -97,7 +91,14 @@ public class RagChatService {
         } else {
             log.info("发送 RAG 会话消息分支: SEARCH_KB, conversationId={}, knowledgeBaseIds={}",
                     conversationId, normalizedRouteResult.knowledgeBaseIds());
-            referenceCandidates = searchReferences(content, normalizedRouteResult.knowledgeBaseIds());
+            SearchReferenceResult searchReferenceResult = searchReferences(
+                    conversationId,
+                    userMessage,
+                    content,
+                    normalizedRouteResult
+            );
+            referenceCandidates = searchReferenceResult.referenceCandidates();
+            retrievalTaskReports = searchReferenceResult.taskReports();
             if (referenceCandidates.isEmpty()) {
                 log.warn("发送 RAG 会话消息分支: 未检索到引用，按普通聊天处理, conversationId={}", conversationId);
                 answerContent = generateAnswer(content, List.of());
@@ -108,10 +109,52 @@ public class RagChatService {
         ConversationMessage assistantMessage = saveMessage(conversationId, MessageRole.ASSISTANT, answerContent);
         ConversationRetrieval retrieval = saveRetrieval(conversationId, assistantMessage.id(), content, normalizedRouteResult);
         List<ReferenceResult> references = saveReferences(retrieval.id(), referenceCandidates);
+        ragRetrievalService.saveTaskReports(retrieval.id(), retrievalTaskReports);
         updateConversationTitleIfNeeded(conversationId, userMessage);
         log.info("发送 RAG 会话消息出参: conversationId={}, assistantMessageId={}, referenceCount={}",
                 conversationId, assistantMessage.id(), references.size());
         return new SendMessageResult(assistantMessage, normalizedRouteResult, references);
+    }
+
+    public SendMessageResult sendMessageStream(
+            Long conversationId,
+            String content,
+            StreamEventConsumer streamEventConsumer
+    ) {
+        log.info("流式发送 RAG 会话消息入参: conversationId={}, contentLength={}", conversationId, content.length());
+        validateConversation(conversationId);
+        ConversationMessage userMessage = saveMessage(conversationId, MessageRole.USER, content);
+        List<KnowledgeBase> knowledgeBases = knowledgeBaseRepository.findAll();
+        RagRouter.RouteResult routeResult = route(content, knowledgeBases);
+        RagRouter.RouteResult normalizedRouteResult = normalizeRouteResult(routeResult);
+        streamEventConsumer.onEvent("router", normalizedRouteResult);
+        List<ReferenceCandidate> referenceCandidates = List.of();
+        List<RagRetrievalService.RetrievalTaskReport> retrievalTaskReports = List.of();
+        List<RagAnswerGenerator.ReferenceContext> answerReferences = List.of();
+        if (normalizedRouteResult.action() == RagRouterAction.SEARCH_KB) {
+            SearchReferenceResult searchReferenceResult = searchReferences(
+                    conversationId,
+                    userMessage,
+                    content,
+                    normalizedRouteResult
+            );
+            referenceCandidates = searchReferenceResult.referenceCandidates();
+            retrievalTaskReports = searchReferenceResult.taskReports();
+            answerReferences = toReferenceContexts(referenceCandidates);
+        }
+        streamEventConsumer.onEvent("retrieval_done", new RetrievalDoneEvent(referenceCandidates.size()));
+        String answerContent = generateAnswerStream(content, answerReferences, streamEventConsumer);
+        ConversationMessage assistantMessage = saveMessage(conversationId, MessageRole.ASSISTANT, answerContent);
+        ConversationRetrieval retrieval = saveRetrieval(conversationId, assistantMessage.id(), content, normalizedRouteResult);
+        List<ReferenceResult> references = saveReferences(retrieval.id(), referenceCandidates);
+        ragRetrievalService.saveTaskReports(retrieval.id(), retrievalTaskReports);
+        updateConversationTitleIfNeeded(conversationId, userMessage);
+        SendMessageResult result = new SendMessageResult(assistantMessage, normalizedRouteResult, references);
+        streamEventConsumer.onEvent("answer_done", new AnswerDoneEvent(assistantMessage.id(), answerContent));
+        streamEventConsumer.onEvent("references", references);
+        log.info("流式发送 RAG 会话消息出参: conversationId={}, assistantMessageId={}, referenceCount={}",
+                conversationId, assistantMessage.id(), references.size());
+        return result;
     }
 
     private void validateConversation(Long conversationId) {
@@ -177,28 +220,47 @@ public class RagChatService {
         return routeResult;
     }
 
-    private List<ReferenceCandidate> searchReferences(String content, List<Long> knowledgeBaseIds) {
-        log.info("搜索 RAG 引用入参: contentLength={}, knowledgeBaseIds={}, retrievalTopK={}, contextTopK={}",
-                content.length(), knowledgeBaseIds, retrievalTopK, contextTopK);
-        if (knowledgeBaseIds.isEmpty()) {
+    private SearchReferenceResult searchReferences(
+            Long conversationId,
+            ConversationMessage userMessage,
+            String content,
+            RagRouter.RouteResult routeResult
+    ) {
+        log.info("搜索 RAG 引用入参: conversationId={}, contentLength={}, knowledgeBaseIds={}, contextTopK={}",
+                conversationId, content.length(), routeResult.knowledgeBaseIds(), contextTopK);
+        if (routeResult.knowledgeBaseIds().isEmpty()) {
             log.warn("搜索 RAG 引用分支: knowledgeBaseIds 为空");
-            return List.of();
+            return new SearchReferenceResult(List.of(), List.of());
         }
-        EmbeddingGenerator.GenerateEmbeddingsResult embeddingsResult = embeddingGenerator.generate(
-                new EmbeddingGenerator.GenerateEmbeddingsCommand(List.of(content))
+        RagRetrievalService.RetrievalResult retrievalResult = ragRetrievalService.retrieve(
+                new RagRetrievalService.RetrievalCommand(
+                        content,
+                        routeResult.queryIntent(),
+                        routeResult.knowledgeBaseIds(),
+                        recentMessages(conversationId, userMessage)
+                )
         );
-        List<Float> queryVector = embeddingsResult.items().get(0).vector();
-        VectorIndexSearcher.SearchResult searchResult = vectorIndexSearcher.search(
-                new VectorIndexSearcher.SearchCommand(knowledgeBaseIds, queryVector, retrievalTopK)
-        );
-        List<VectorIndexSearcher.SearchHit> deduplicatedHits = deduplicateHits(searchResult.hits());
-        List<VectorIndexSearcher.SearchHit> selectedHits = deduplicatedHits.stream()
+        List<VectorIndexSearcher.SearchHit> selectedHits = retrievalResult.fusedHits().stream()
                 .limit(contextTopK)
                 .toList();
         List<ReferenceCandidate> referenceCandidates = hydrateReferences(selectedHits);
-        log.info("搜索 RAG 引用出参: hitCount={}, deduplicatedCount={}, selectedCount={}, hydratedCount={}",
-                searchResult.hits().size(), deduplicatedHits.size(), selectedHits.size(), referenceCandidates.size());
-        return referenceCandidates;
+        log.info("搜索 RAG 引用出参: fusedHitCount={}, selectedCount={}, hydratedCount={}, taskCount={}",
+                retrievalResult.fusedHits().size(), selectedHits.size(), referenceCandidates.size(),
+                retrievalResult.taskReports().size());
+        return new SearchReferenceResult(referenceCandidates, retrievalResult.taskReports());
+    }
+
+    private List<ConversationMessage> recentMessages(Long conversationId, ConversationMessage currentUserMessage) {
+        List<ConversationMessage> messages = conversationMessageRepository.findByConversationId(conversationId);
+        List<ConversationMessage> previousMessages = messages.stream()
+                .filter(message -> message.id() != null && !message.id().equals(currentUserMessage.id()))
+                .toList();
+        int historyLimit = 6;
+        int fromIndex = Math.max(0, previousMessages.size() - historyLimit);
+        List<ConversationMessage> recentMessages = previousMessages.subList(fromIndex, previousMessages.size());
+        log.info("查询最近对话出参: conversationId={}, total={}, selected={}",
+                conversationId, previousMessages.size(), recentMessages.size());
+        return recentMessages;
     }
 
     private List<VectorIndexSearcher.SearchHit> deduplicateHits(List<VectorIndexSearcher.SearchHit> hits) {
@@ -269,6 +331,21 @@ public class RagChatService {
                 new RagAnswerGenerator.AnswerCommand(content, references)
         );
         log.info("生成 RAG 回答出参: answerLength={}, provider={}, model={}",
+                answerResult.content().length(), answerResult.provider(), answerResult.model());
+        return answerResult.content();
+    }
+
+    private String generateAnswerStream(
+            String content,
+            List<RagAnswerGenerator.ReferenceContext> references,
+            StreamEventConsumer streamEventConsumer
+    ) {
+        log.info("流式生成 RAG 回答入参: contentLength={}, referenceCount={}", content.length(), references.size());
+        RagAnswerGenerator.AnswerResult answerResult = ragAnswerGenerator.generateStream(
+                new RagAnswerGenerator.AnswerCommand(content, references),
+                delta -> streamEventConsumer.onEvent("answer_delta", new AnswerDeltaEvent(delta))
+        );
+        log.info("流式生成 RAG 回答出参: answerLength={}, provider={}, model={}",
                 answerResult.content().length(), answerResult.provider(), answerResult.model());
         return answerResult.content();
     }
@@ -359,10 +436,37 @@ public class RagChatService {
     ) {
     }
 
+    private record SearchReferenceResult(
+            List<ReferenceCandidate> referenceCandidates,
+            List<RagRetrievalService.RetrievalTaskReport> taskReports
+    ) {
+    }
+
     public record SendMessageResult(
             ConversationMessage assistantMessage,
             RagRouter.RouteResult router,
             List<ReferenceResult> references
+    ) {
+    }
+
+    public interface StreamEventConsumer {
+
+        void onEvent(String eventName, Object data);
+    }
+
+    public record RetrievalDoneEvent(
+            Integer referenceCount
+    ) {
+    }
+
+    public record AnswerDeltaEvent(
+            String delta
+    ) {
+    }
+
+    public record AnswerDoneEvent(
+            Long messageId,
+            String content
     ) {
     }
 

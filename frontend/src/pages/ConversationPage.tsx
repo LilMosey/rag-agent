@@ -5,7 +5,7 @@ import {
   deleteConversation,
   listConversationMessages,
   listConversations,
-  sendConversationMessage,
+  sendConversationMessageStream,
   updateConversationTitle
 } from '../api/conversationApi';
 import { toApiError } from '../api/client';
@@ -163,27 +163,57 @@ export function ConversationPage() {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
-    setMessages((currentMessages) => [...currentMessages, optimisticUserMessage]);
+    const optimisticAssistantMessage: ConversationMessage = {
+      id: optimisticUserMessage.id - 1,
+      conversationId: selectedConversationId,
+      role: 'ASSISTANT',
+      content: '',
+      messageOrder: optimisticUserMessage.messageOrder + 1,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    let assistantMessageId = optimisticAssistantMessage.id;
+    setMessages((currentMessages) => [...currentMessages, optimisticUserMessage, optimisticAssistantMessage]);
     setSending(true);
     try {
-      const response = await sendConversationMessage(selectedConversationId, content);
-      const assistantMessage: ConversationMessage = {
-        id: response.messageId,
-        conversationId: selectedConversationId,
-        role: 'ASSISTANT',
-        content: response.content,
-        messageOrder: optimisticUserMessage.messageOrder + 1,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-      setMessages((currentMessages) => [...currentMessages, assistantMessage]);
-      setReferencesByMessageId((currentReferences) => ({
-        ...currentReferences,
-        [response.messageId]: response.references
-      }));
+      await sendConversationMessageStream(selectedConversationId, content, {
+        onAnswerDelta: (event) => {
+          setMessages((currentMessages) =>
+            currentMessages.map((messageItem) =>
+              messageItem.id === assistantMessageId
+                ? { ...messageItem, content: messageItem.content + event.delta }
+                : messageItem
+            )
+          );
+        },
+        onAnswerDone: (event) => {
+          const previousAssistantMessageId = assistantMessageId;
+          assistantMessageId = event.messageId;
+          setMessages((currentMessages) =>
+            currentMessages.map((messageItem) =>
+              messageItem.id === previousAssistantMessageId
+                ? { ...messageItem, id: event.messageId, content: event.content }
+                : messageItem
+            )
+          );
+        },
+        onReferences: (references) => {
+          setReferencesByMessageId((currentReferences) => ({
+            ...currentReferences,
+            [assistantMessageId]: references
+          }));
+        },
+        onError: (event) => {
+          messageApi.error(event.message || '流式回答失败');
+        }
+      });
       await loadConversations(selectedConversationId);
     } catch (error) {
-      setMessages((currentMessages) => currentMessages.filter((messageItem) => messageItem.id !== optimisticUserMessage.id));
+      setMessages((currentMessages) =>
+        currentMessages.filter(
+          (messageItem) => messageItem.id !== optimisticUserMessage.id && messageItem.id !== optimisticAssistantMessage.id
+        )
+      );
       messageApi.error(toApiError(error).message);
     } finally {
       setSending(false);

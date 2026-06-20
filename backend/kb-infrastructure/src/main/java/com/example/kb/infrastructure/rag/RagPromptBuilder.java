@@ -2,6 +2,8 @@ package com.example.kb.infrastructure.rag;
 
 import com.example.kb.application.port.RagAnswerGenerator;
 import com.example.kb.application.port.RagRouter;
+import com.example.kb.domain.model.ConversationMessage;
+import com.example.kb.domain.model.QueryIntent;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -93,5 +95,72 @@ public class RagPromptBuilder {
                 【用户问题】
                 %s
                 """.formatted(referenceBuilder, userQuestion);
+    }
+
+    public String buildQueryRewritePrompt(
+            String userQuestion,
+            QueryIntent queryIntent,
+            List<ConversationMessage> recentMessages
+    ) {
+        StringBuilder historyBuilder = new StringBuilder();
+        for (ConversationMessage message : recentMessages) {
+            historyBuilder.append(message.role())
+                    .append(": ")
+                    .append(message.content())
+                    .append("\n");
+        }
+        return """
+                你是企业知识库检索 Query 改写器。
+                你的任务是把用户当前问题改写成更适合向量检索的独立查询句。
+                只补全必要的指代、主题、业务对象和约束，不要添加不存在的事实。
+                如果当前问题已经清晰，保持原问题。
+                必须只返回 JSON，不要输出 Markdown，不要输出解释。
+
+                JSON 格式：
+                {
+                  "rewrittenQuery": "改写后的检索问题",
+                  "changed": true,
+                  "reason": "改写原因"
+                }
+
+                问题意图：
+                %s
+
+                最近对话：
+                %s
+
+                当前问题：
+                %s
+                """.formatted(queryIntent == null ? QueryIntent.FACT_QA : queryIntent, historyBuilder, userQuestion);
+    }
+
+    public String buildHydePrompt(String userQuestion) {
+        return """
+                你是企业知识库检索 Query 增强器。
+                请根据用户问题生成一段“可能的答案形态”，用于向量检索。
+                这段文本只用于检索，不会展示给用户。
+                不要编造具体企业制度数字、日期、审批人或金额；如果缺少事实，就用概括性表达。
+                直接输出一段自然语言文本，不要输出 Markdown，不要输出 JSON。
+
+                用户问题：
+                %s
+                """.formatted(userQuestion);
+    }
+
+    public String buildMultiQueryPrompt(String userQuestion, Integer queryCount) {
+        return """
+                你是企业知识库检索 Query 扩展器。
+                请基于用户问题生成 %d 个语义相近但表达角度不同的检索查询。
+                查询应保持原问题意图，不要引入新的业务事实。
+                必须只返回 JSON，不要输出 Markdown，不要输出解释。
+
+                JSON 格式：
+                {
+                  "queries": ["查询1", "查询2", "查询3"]
+                }
+
+                用户问题：
+                %s
+                """.formatted(queryCount == null ? 3 : queryCount, userQuestion);
     }
 }

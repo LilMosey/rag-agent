@@ -134,4 +134,9 @@ public final class ConversationDtos {
             );
         }
     }
+
+    public record StreamErrorResponse(
+            String message
+    ) {
+    }
 }

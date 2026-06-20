@@ -50,6 +50,23 @@ public class AgentScopeRagAnswerGenerator implements RagAnswerGenerator {
         }
     }
 
+    @Override
+    public AnswerResult generateStream(AnswerCommand command, AnswerDeltaConsumer answerDeltaConsumer) {
+        log.info("RAG 流式回答生成入参: questionLength={}, referenceCount={}, provider={}, model={}",
+                command.userQuestion().length(), command.references().size(), properties.provider(), properties.answerModel());
+        try {
+            String prompt = promptBuilder.buildAnswerPrompt(command.userQuestion(), command.references());
+            String responseText = callModelStream(prompt, answerDeltaConsumer);
+            log.info("RAG 流式回答生成出参: answerLength={}, referenceCount={}",
+                    responseText.length(), command.references().size());
+            return new AnswerResult(responseText, properties.provider(), properties.answerModel());
+        } catch (Exception exception) {
+            log.error("RAG 流式回答生成异常: questionLength={}, referenceCount={}",
+                    command.userQuestion().length(), command.references().size(), exception);
+            throw new IllegalStateException("RAG 流式回答生成失败: " + exception.getMessage(), exception);
+        }
+    }
+
     private String callModel(String prompt) {
         Msg message = Msg.builder()
                 .name("user")
@@ -66,6 +83,36 @@ public class AgentScopeRagAnswerGenerator implements RagAnswerGenerator {
         Flux<ChatResponse> responseFlux = chatModel.stream(List.of(message), List.of(), generateOptions);
         List<ChatResponse> responses = responseFlux.collectList().block();
         return extractText(responses);
+    }
+
+    private String callModelStream(String prompt, AnswerDeltaConsumer answerDeltaConsumer) {
+        Msg message = Msg.builder()
+                .name("user")
+                .role(MsgRole.USER)
+                .textContent(prompt)
+                .build();
+        GenerateOptions generateOptions = GenerateOptions.builder()
+                .apiKey(properties.apiKey())
+                .baseUrl(properties.baseUrl())
+                .modelName(properties.answerModel())
+                .stream(Boolean.TRUE)
+                .temperature(0.2D)
+                .build();
+        Flux<ChatResponse> responseFlux = chatModel.stream(List.of(message), List.of(), generateOptions);
+        StringBuilder builder = new StringBuilder();
+        for (ChatResponse response : responseFlux.toIterable()) {
+            String delta = extractText(response);
+            if (delta.isBlank()) {
+                continue;
+            }
+            builder.append(delta);
+            answerDeltaConsumer.onDelta(delta);
+        }
+        String text = builder.toString().trim();
+        if (text.isBlank()) {
+            throw new IllegalStateException("LLM 文本内容为空。");
+        }
+        return text;
     }
 
     private String extractText(List<ChatResponse> responses) {
@@ -88,5 +135,18 @@ public class AgentScopeRagAnswerGenerator implements RagAnswerGenerator {
             throw new IllegalStateException("LLM 文本内容为空。");
         }
         return text;
+    }
+
+    private String extractText(ChatResponse response) {
+        if (response == null || response.getContent() == null) {
+            return "";
+        }
+        StringBuilder builder = new StringBuilder();
+        for (ContentBlock contentBlock : response.getContent()) {
+            if (contentBlock instanceof TextBlock textBlock) {
+                builder.append(textBlock.getText());
+            }
+        }
+        return builder.toString();
     }
 }
