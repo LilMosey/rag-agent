@@ -81,6 +81,12 @@ rag:
     hyde-enabled: true
     multi-query-enabled: true
     bm25-enabled: true
+    rerank-enabled: true
+    rerank-model: gte-rerank-v2
+    rerank-api-key: yourKey
+    rerank-base-url: https://ws-hh3wm4lgkatqm4g0.cn-beijing.maas.aliyuncs.com/api/v1
+    rerank-candidate-top-k: 30
+    rerank-return-documents: false
     query-rewrite-history-message-limit: 6
     multi-query-count: 3
     dense-top-k: 10

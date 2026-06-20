@@ -5,5 +5,6 @@ public enum RetrievalTaskType {
     REWRITE_DENSE,
     HYDE_DENSE,
     MULTI_QUERY_DENSE,
-    BM25
+    BM25,
+    RERANK
 }

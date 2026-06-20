@@ -5,6 +5,12 @@ public record RagRetrievalProperties(
         Boolean hydeEnabled,
         Boolean multiQueryEnabled,
         Boolean bm25Enabled,
+        Boolean rerankEnabled,
+        String rerankModel,
+        String rerankApiKey,
+        String rerankBaseUrl,
+        Integer rerankCandidateTopK,
+        Boolean rerankReturnDocuments,
         Integer queryRewriteHistoryMessageLimit,
         Integer multiQueryCount,
         Integer denseTopK,
@@ -31,6 +37,39 @@ public record RagRetrievalProperties(
 
     public boolean isBm25Enabled() {
         return bm25Enabled != null && bm25Enabled;
+    }
+
+    public boolean isRerankEnabled() {
+        return rerankEnabled != null && rerankEnabled;
+    }
+
+    public String safeRerankModel() {
+        if (rerankModel == null || rerankModel.isBlank()) {
+            return "gte-rerank-v2";
+        }
+        return rerankModel;
+    }
+
+    public String safeRerankApiKey() {
+        if (rerankApiKey == null || rerankApiKey.isBlank()) {
+            return "";
+        }
+        return rerankApiKey;
+    }
+
+    public String safeRerankBaseUrl() {
+        if (rerankBaseUrl == null || rerankBaseUrl.isBlank()) {
+            return "";
+        }
+        return rerankBaseUrl;
+    }
+
+    public int safeRerankCandidateTopK() {
+        return rerankCandidateTopK == null ? 30 : rerankCandidateTopK;
+    }
+
+    public boolean isRerankReturnDocuments() {
+        return rerankReturnDocuments != null && rerankReturnDocuments;
     }
 
     public int safeQueryRewriteHistoryMessageLimit() {

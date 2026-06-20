@@ -25,6 +25,7 @@ import com.example.kb.application.port.ObjectStorage;
 import com.example.kb.application.port.QueryRewriteGenerator;
 import com.example.kb.application.port.RagAnswerGenerator;
 import com.example.kb.application.port.RagRouter;
+import com.example.kb.application.port.RerankGenerator;
 import com.example.kb.application.port.VectorIndexCleaner;
 import com.example.kb.application.port.VectorIndexSearcher;
 import com.example.kb.application.port.VectorIndexWriter;
@@ -52,6 +53,7 @@ import com.example.kb.infrastructure.rag.AgentScopeRagRouter;
 import com.example.kb.infrastructure.rag.AgentScopeHydeGenerator;
 import com.example.kb.infrastructure.rag.AgentScopeMultiQueryGenerator;
 import com.example.kb.infrastructure.rag.AgentScopeQueryRewriteGenerator;
+import com.example.kb.infrastructure.rag.DashScopeRerankGenerator;
 import com.example.kb.infrastructure.rag.RagPromptBuilder;
 import com.example.kb.infrastructure.rag.RagProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -79,6 +81,12 @@ public class ApplicationServiceConfiguration {
                 environment.getProperty("rag.retrieval.hyde-enabled", Boolean.class),
                 environment.getProperty("rag.retrieval.multi-query-enabled", Boolean.class),
                 environment.getProperty("rag.retrieval.bm25-enabled", Boolean.class),
+                environment.getProperty("rag.retrieval.rerank-enabled", Boolean.class),
+                environment.getProperty("rag.retrieval.rerank-model", String.class),
+                environment.getProperty("rag.retrieval.rerank-api-key", String.class),
+                environment.getProperty("rag.retrieval.rerank-base-url", String.class),
+                environment.getProperty("rag.retrieval.rerank-candidate-top-k", Integer.class),
+                environment.getProperty("rag.retrieval.rerank-return-documents", Boolean.class),
                 environment.getProperty("rag.retrieval.query-rewrite-history-message-limit", Integer.class),
                 environment.getProperty("rag.retrieval.multi-query-count", Integer.class),
                 environment.getProperty("rag.retrieval.dense-top-k", Integer.class),
@@ -264,6 +272,17 @@ public class ApplicationServiceConfiguration {
         return new RrfFusionService();
     }
 
+    @Bean
+    public RerankGenerator rerankGenerator(
+            RagProperties ragProperties,
+            RagRetrievalProperties ragRetrievalProperties
+    ) {
+        log.info("Rerank 生成器分支: 使用 DashScope, provider={}, model={}, enabled={}",
+                "dashscope", ragRetrievalProperties.safeRerankModel(),
+                ragRetrievalProperties.isRerankEnabled());
+        return new DashScopeRerankGenerator(ragRetrievalProperties);
+    }
+
     @Bean(destroyMethod = "shutdown")
     public ExecutorService ragRetrievalExecutorService(RagRetrievalProperties ragRetrievalProperties) {
         log.info("RAG 检索线程池初始化: coreSize={}, maxSize={}, queueCapacity={}",
@@ -364,6 +383,7 @@ public class ApplicationServiceConfiguration {
             RagRouter ragRouter,
             RagRetrievalService ragRetrievalService,
             RagConversationContextService ragConversationContextService,
+            RerankGenerator rerankGenerator,
             RagAnswerGenerator ragAnswerGenerator,
             RagRetrievalProperties ragRetrievalProperties
     ) {
@@ -379,6 +399,8 @@ public class ApplicationServiceConfiguration {
                 ragRouter,
                 ragRetrievalService,
                 ragConversationContextService,
+                rerankGenerator,
+                ragRetrievalProperties,
                 ragAnswerGenerator,
                 ragRetrievalProperties.safeContextTopK()
         );

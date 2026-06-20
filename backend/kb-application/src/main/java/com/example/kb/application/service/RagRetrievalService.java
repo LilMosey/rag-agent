@@ -389,6 +389,42 @@ public class RagRetrievalService {
             );
         }
 
+        public static RetrievalTaskReport success(
+                RetrievalTaskType taskType,
+                String queryText,
+                List<VectorIndexSearcher.SearchHit> hits,
+                LocalDateTime startedAt,
+                LocalDateTime finishedAt
+        ) {
+            return new RetrievalTaskReport(
+                    taskType,
+                    queryText,
+                    RetrievalTaskStatus.SUCCESS,
+                    null,
+                    startedAt,
+                    finishedAt,
+                    hits
+            );
+        }
+
+        public static RetrievalTaskReport failed(
+                RetrievalTaskType taskType,
+                String queryText,
+                String errorMessage,
+                LocalDateTime startedAt,
+                LocalDateTime finishedAt
+        ) {
+            return new RetrievalTaskReport(
+                    taskType,
+                    queryText,
+                    RetrievalTaskStatus.FAILED,
+                    errorMessage,
+                    startedAt,
+                    finishedAt,
+                    List.of()
+            );
+        }
+
         public static RetrievalTaskReport skipped(RetrievalTaskDraft taskDraft) {
             LocalDateTime now = LocalDateTime.now();
             return new RetrievalTaskReport(

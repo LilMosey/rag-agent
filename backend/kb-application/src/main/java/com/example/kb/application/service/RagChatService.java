@@ -10,6 +10,7 @@ import com.example.kb.application.port.KnowledgeBaseRepository;
 import com.example.kb.application.port.KnowledgeFileRepository;
 import com.example.kb.application.port.RagAnswerGenerator;
 import com.example.kb.application.port.RagRouter;
+import com.example.kb.application.port.RerankGenerator;
 import com.example.kb.application.port.VectorIndexSearcher;
 import com.example.kb.domain.model.ConversationMessage;
 import com.example.kb.domain.model.ConversationRetrieval;
@@ -20,6 +21,7 @@ import com.example.kb.domain.model.KnowledgeFile;
 import com.example.kb.domain.model.MessageRole;
 import com.example.kb.domain.model.QueryIntent;
 import com.example.kb.domain.model.RagRouterAction;
+import com.example.kb.domain.model.RetrievalTaskType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -45,6 +47,8 @@ public class RagChatService {
     private final RagRouter ragRouter;
     private final RagRetrievalService ragRetrievalService;
     private final RagConversationContextService ragConversationContextService;
+    private final RerankGenerator rerankGenerator;
+    private final RagRetrievalProperties ragRetrievalProperties;
     private final RagAnswerGenerator ragAnswerGenerator;
     private final int contextTopK;
 
@@ -60,6 +64,8 @@ public class RagChatService {
             RagRouter ragRouter,
             RagRetrievalService ragRetrievalService,
             RagConversationContextService ragConversationContextService,
+            RerankGenerator rerankGenerator,
+            RagRetrievalProperties ragRetrievalProperties,
             RagAnswerGenerator ragAnswerGenerator,
             int contextTopK
     ) {
@@ -74,6 +80,8 @@ public class RagChatService {
         this.ragRouter = ragRouter;
         this.ragRetrievalService = ragRetrievalService;
         this.ragConversationContextService = ragConversationContextService;
+        this.rerankGenerator = rerankGenerator;
+        this.ragRetrievalProperties = ragRetrievalProperties;
         this.ragAnswerGenerator = ragAnswerGenerator;
         this.contextTopK = contextTopK;
     }
@@ -103,7 +111,8 @@ public class RagChatService {
                     content,
                     searchText(normalizedRouteResult, content),
                     normalizedRouteResult,
-                    recentMessages
+                    recentMessages,
+                    true
             );
             referenceCandidates = searchReferenceResult.referenceCandidates();
             retrievalTaskReports = searchReferenceResult.taskReports();
@@ -134,10 +143,21 @@ public class RagChatService {
                     content,
                     searchText(normalizedRouteResult, content),
                     normalizedRouteResult,
-                    recentMessages
+                    recentMessages,
+                    false
             );
             retrievalTaskReports = searchReferenceResult.taskReports();
-            referenceCandidates = combineReferenceCandidates(previousCandidates, searchReferenceResult.referenceCandidates());
+            List<ReferenceCandidate> combinedCandidates =
+                    combineReferenceCandidates(previousCandidates, searchReferenceResult.referenceCandidates());
+            RerankReferenceResult rerankReferenceResult = rerankReferenceCandidates(
+                    searchText(normalizedRouteResult, content),
+                    combinedCandidates
+            );
+            retrievalTaskReports = new ArrayList<>(retrievalTaskReports);
+            rerankReferenceResult.taskReport().ifPresent(retrievalTaskReports::add);
+            referenceCandidates = rerankReferenceResult.referenceCandidates().stream()
+                    .limit(contextTopK)
+                    .toList();
             if (referenceCandidates.isEmpty()) {
                 log.warn("发送 RAG 会话消息分支: USE_PREVIOUS_AND_SEARCH 未获得引用，按普通聊天处理, conversationId={}", conversationId);
                 answerContent = generateAnswer(content, List.of(), recentMessages);
@@ -180,7 +200,8 @@ public class RagChatService {
                     content,
                     searchText(normalizedRouteResult, content),
                     normalizedRouteResult,
-                    recentMessages
+                    recentMessages,
+                    true
             );
             referenceCandidates = searchReferenceResult.referenceCandidates();
             retrievalTaskReports = searchReferenceResult.taskReports();
@@ -205,10 +226,21 @@ public class RagChatService {
                     content,
                     searchText(normalizedRouteResult, content),
                     normalizedRouteResult,
-                    recentMessages
+                    recentMessages,
+                    false
             );
             retrievalTaskReports = searchReferenceResult.taskReports();
-            referenceCandidates = combineReferenceCandidates(previousCandidates, searchReferenceResult.referenceCandidates());
+            List<ReferenceCandidate> combinedCandidates =
+                    combineReferenceCandidates(previousCandidates, searchReferenceResult.referenceCandidates());
+            RerankReferenceResult rerankReferenceResult = rerankReferenceCandidates(
+                    searchText(normalizedRouteResult, content),
+                    combinedCandidates
+            );
+            retrievalTaskReports = new ArrayList<>(retrievalTaskReports);
+            rerankReferenceResult.taskReport().ifPresent(retrievalTaskReports::add);
+            referenceCandidates = rerankReferenceResult.referenceCandidates().stream()
+                    .limit(contextTopK)
+                    .toList();
             answerReferences = toReferenceContexts(referenceCandidates);
             log.info("流式发送 RAG 会话消息分支: USE_PREVIOUS_AND_SEARCH, conversationId={}, referenceCount={}",
                     conversationId, referenceCandidates.size());
@@ -388,10 +420,11 @@ public class RagChatService {
             String content,
             String searchText,
             RagRouter.RouteResult routeResult,
-            List<ConversationMessage> recentMessages
+            List<ConversationMessage> recentMessages,
+            boolean applyRerank
     ) {
-        log.info("搜索 RAG 引用入参: conversationId={}, contentLength={}, searchTextLength={}, knowledgeBaseIds={}, contextTopK={}",
-                conversationId, content.length(), searchText.length(), routeResult.knowledgeBaseIds(), contextTopK);
+        log.info("搜索 RAG 引用入参: conversationId={}, contentLength={}, searchTextLength={}, knowledgeBaseIds={}, contextTopK={}, applyRerank={}",
+                conversationId, content.length(), searchText.length(), routeResult.knowledgeBaseIds(), contextTopK, applyRerank);
         if (routeResult.knowledgeBaseIds().isEmpty()) {
             log.warn("搜索 RAG 引用分支: knowledgeBaseIds 为空");
             return new SearchReferenceResult(List.of(), List.of());
@@ -405,13 +438,26 @@ public class RagChatService {
                 )
         );
         List<VectorIndexSearcher.SearchHit> selectedHits = retrievalResult.fusedHits().stream()
-                .limit(contextTopK)
+                .limit(applyRerank ? ragRetrievalProperties.safeRerankCandidateTopK() : contextTopK)
                 .toList();
-        List<ReferenceCandidate> referenceCandidates = hydrateReferences(selectedHits);
-        log.info("搜索 RAG 引用出参: fusedHitCount={}, selectedCount={}, hydratedCount={}, taskCount={}",
-                retrievalResult.fusedHits().size(), selectedHits.size(), referenceCandidates.size(),
-                retrievalResult.taskReports().size());
-        return new SearchReferenceResult(referenceCandidates, retrievalResult.taskReports());
+        List<ReferenceCandidate> hydratedCandidates = hydrateReferences(selectedHits);
+        List<RagRetrievalService.RetrievalTaskReport> taskReports = new ArrayList<>(retrievalResult.taskReports());
+        List<ReferenceCandidate> referenceCandidates;
+        if (applyRerank) {
+            RerankReferenceResult rerankReferenceResult = rerankReferenceCandidates(searchText, hydratedCandidates);
+            rerankReferenceResult.taskReport().ifPresent(taskReports::add);
+            referenceCandidates = rerankReferenceResult.referenceCandidates().stream()
+                    .limit(contextTopK)
+                    .toList();
+        } else {
+            referenceCandidates = hydratedCandidates.stream()
+                    .limit(contextTopK)
+                    .toList();
+        }
+        log.info("搜索 RAG 引用出参: fusedHitCount={}, selectedCount={}, hydratedCount={}, finalCount={}, taskCount={}",
+                retrievalResult.fusedHits().size(), selectedHits.size(), hydratedCandidates.size(),
+                referenceCandidates.size(), taskReports.size());
+        return new SearchReferenceResult(referenceCandidates, taskReports);
     }
 
     private List<VectorIndexSearcher.SearchHit> deduplicateHits(List<VectorIndexSearcher.SearchHit> hits) {
@@ -460,6 +506,104 @@ public class RagChatService {
         }
         log.info("还原引用上下文出参: hitCount={}, referenceCount={}", hits.size(), referenceCandidates.size());
         return referenceCandidates;
+    }
+
+    private RerankReferenceResult rerankReferenceCandidates(
+            String query,
+            List<ReferenceCandidate> candidates
+    ) {
+        log.info("Rerank 引用候选入参: enabled={}, queryLength={}, candidateCount={}",
+                ragRetrievalProperties.isRerankEnabled(), query.length(), candidates.size());
+        if (!ragRetrievalProperties.isRerankEnabled()) {
+            log.info("Rerank 引用候选分支: 配置关闭，使用 RRF 排序");
+            return new RerankReferenceResult(candidates, Optional.empty());
+        }
+        if (candidates.isEmpty()) {
+            log.info("Rerank 引用候选分支: 候选为空");
+            return new RerankReferenceResult(candidates, Optional.empty());
+        }
+        LocalDateTime startedAt = LocalDateTime.now();
+        try {
+            List<RerankGenerator.RerankDocument> documents = new ArrayList<>(candidates.size());
+            for (ReferenceCandidate candidate : candidates) {
+                documents.add(new RerankGenerator.RerankDocument(candidate.chunk().id(), candidate.content()));
+            }
+            RerankGenerator.RerankResult rerankResult = rerankGenerator.rerank(
+                    new RerankGenerator.RerankCommand(
+                            query,
+                            documents,
+                            Math.min(contextTopK, candidates.size())
+                    )
+            );
+            List<ReferenceCandidate> rerankedCandidates = applyRerankResult(candidates, rerankResult.items());
+            RagRetrievalService.RetrievalTaskReport taskReport = RagRetrievalService.RetrievalTaskReport.success(
+                    RetrievalTaskType.RERANK,
+                    query,
+                    toSearchHits(rerankedCandidates),
+                    startedAt,
+                    LocalDateTime.now()
+            );
+            log.info("Rerank 引用候选出参: inputCount={}, outputCount={}, provider={}, model={}",
+                    candidates.size(), rerankedCandidates.size(), rerankResult.provider(), rerankResult.model());
+            return new RerankReferenceResult(rerankedCandidates, Optional.of(taskReport));
+        } catch (Exception exception) {
+            log.error("Rerank 引用候选异常: queryLength={}, candidateCount={}",
+                    query.length(), candidates.size(), exception);
+            RagRetrievalService.RetrievalTaskReport taskReport = RagRetrievalService.RetrievalTaskReport.failed(
+                    RetrievalTaskType.RERANK,
+                    query,
+                    exception.getMessage(),
+                    startedAt,
+                    LocalDateTime.now()
+            );
+            return new RerankReferenceResult(candidates, Optional.of(taskReport));
+        }
+    }
+
+    private List<ReferenceCandidate> applyRerankResult(
+            List<ReferenceCandidate> candidates,
+            List<RerankGenerator.RerankItem> rerankItems
+    ) {
+        if (rerankItems == null || rerankItems.isEmpty()) {
+            log.warn("应用 Rerank 结果分支: rerankItems 为空，使用原排序");
+            return candidates;
+        }
+        Map<Long, ReferenceCandidate> candidateMap = new LinkedHashMap<>();
+        for (ReferenceCandidate candidate : candidates) {
+            candidateMap.put(candidate.chunk().id(), candidate);
+        }
+        List<ReferenceCandidate> rerankedCandidates = new ArrayList<>();
+        for (RerankGenerator.RerankItem item : rerankItems) {
+            ReferenceCandidate candidate = candidateMap.remove(item.chunkId());
+            if (candidate == null) {
+                log.warn("应用 Rerank 结果分支: chunkId 未命中候选, chunkId={}", item.chunkId());
+                continue;
+            }
+            VectorIndexSearcher.SearchHit rerankHit = new VectorIndexSearcher.SearchHit(
+                    candidate.hit().knowledgeBaseId(),
+                    candidate.hit().fileId(),
+                    candidate.hit().chunkId(),
+                    candidate.hit().chunkIndex(),
+                    item.score()
+            );
+            rerankedCandidates.add(new ReferenceCandidate(
+                    item.rankNo(),
+                    rerankHit,
+                    candidate.chunk(),
+                    candidate.file(),
+                    candidate.content()
+            ));
+        }
+        rerankedCandidates.addAll(candidateMap.values());
+        return renumberReferenceCandidates(rerankedCandidates);
+    }
+
+    private List<VectorIndexSearcher.SearchHit> toSearchHits(List<ReferenceCandidate> candidates) {
+        List<VectorIndexSearcher.SearchHit> hits = new ArrayList<>(candidates.size());
+        for (ReferenceCandidate candidate : candidates) {
+            hits.add(candidate.hit());
+        }
+        return hits;
     }
 
     private List<RagAnswerGenerator.ReferenceContext> toReferenceContexts(List<ReferenceCandidate> candidates) {
@@ -623,6 +767,12 @@ public class RagChatService {
     private record SearchReferenceResult(
             List<ReferenceCandidate> referenceCandidates,
             List<RagRetrievalService.RetrievalTaskReport> taskReports
+    ) {
+    }
+
+    private record RerankReferenceResult(
+            List<ReferenceCandidate> referenceCandidates,
+            Optional<RagRetrievalService.RetrievalTaskReport> taskReport
     ) {
     }
 
