@@ -196,6 +196,18 @@ export function ConversationPage() {
                 : messageItem
             )
           );
+          setReferencesByMessageId((currentReferences) => {
+            const previousReferences = currentReferences[previousAssistantMessageId];
+            if (!previousReferences) {
+              return currentReferences;
+            }
+            const nextReferences = {
+              ...currentReferences,
+              [event.messageId]: previousReferences
+            };
+            delete nextReferences[previousAssistantMessageId];
+            return nextReferences;
+          });
         },
         onReferences: (references) => {
           setReferencesByMessageId((currentReferences) => ({
